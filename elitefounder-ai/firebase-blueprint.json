@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique ID of the user." },
+        "email": { "type": "string", "description": "The email address of the user." },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "The role of the user." },
+        "usageDuration": { "type": "number", "description": "The total usage duration in minutes." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created." }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "User feedback reports.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the user who provided feedback." },
+        "email": { "type": "string", "description": "The email of the user who provided feedback." },
+        "message": { "type": "string", "description": "The feedback message." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the feedback was submitted." }
+      },
+      "required": ["uid", "email", "message", "createdAt"]
+    },
+    "KnowledgeBase": {
+      "title": "KnowledgeBase",
+      "description": "Documents and corpus for training consultants.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the document." },
+        "content": { "type": "string", "description": "The content of the document." },
+        "type": { "type": "string", "enum": ["interview", "ip", "copywriting"], "description": "The consultant type this document targets." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the document was uploaded." }
+      },
+      "required": ["title", "content", "type", "createdAt"]
+    },
+    "History": {
+      "title": "History",
+      "description": "User's generation history.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the user." },
+        "type": { "type": "string", "description": "The type of content (interview, info, positioning, copywriting)." },
+        "content": { "type": "string", "description": "The generated content." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the content was generated." }
+      },
+      "required": ["uid", "type", "content", "createdAt"]
+    },
+    "UserProgress": {
+      "title": "UserProgress",
+      "description": "Current progress and state of the user's IP creation process.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the user." },
+        "interviewMessages": { "type": "string", "description": "JSON string of the current interview messages." },
+        "interviewReport": { "type": "string", "description": "The current interview report." },
+        "infoReport": { "type": "string", "description": "The current information report." },
+        "positioningReport": { "type": "string", "description": "The current positioning report." },
+        "copywritingOutput": { "type": "string", "description": "JSON string of the current copywriting output." },
+        "copywritingMessages": { "type": "string", "description": "JSON string of the current copywriting messages." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the progress was last updated." }
+      },
+      "required": ["uid", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profile documents." },
+    "/feedback/{feedbackId}": { "schema": "Feedback", "description": "Collection of feedback reports." },
+    "/knowledgeBase/{docId}": { "schema": "KnowledgeBase", "description": "Collection of training documents." },
+    "/history/{historyId}": { "schema": "History", "description": "Collection of user generation history." },
+    "/userProgress/{uid}": { "schema": "UserProgress", "description": "Current progress for each user." }
+  }
+}

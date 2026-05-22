@@ -1,0 +1,139 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required) - The unique ID of the user.
+//   - email: string (required) - The email address of the user.
+//   - role: string (required, enum: ["user", "admin"]) - The role of the user.
+//   - usageDuration: number (optional) - The total usage duration in minutes.
+//   - createdAt: timestamp (optional) - When the user account was created.
+//
+// Collection: feedback
+// Document ID: {feedbackId}
+// Fields:
+//   - uid: string (required) - The ID of the user who provided feedback.
+//   - email: string (required) - The email of the user who provided feedback.
+//   - message: string (required) - The feedback message.
+//   - sentiment: string (optional) - The sentiment of the feedback.
+//   - createdAt: timestamp (required) - When the feedback was submitted.
+//
+// Collection: knowledgeBase
+// Document ID: {docId}
+// Fields:
+//   - title: string (required) - The title of the document.
+//   - content: string (required) - The content of the document.
+//   - type: string (required, enum: ["interview", "ip", "copywriting"]) - The consultant type this document targets.
+//   - createdAt: timestamp (required) - When the document was uploaded.
+//
+// Collection: history
+// Document ID: {historyId}
+// Fields:
+//   - uid: string (required) - The ID of the user.
+//   - type: string (required) - The type of content.
+//   - content: string (required) - The generated content.
+//   - createdAt: timestamp (required) - When the content was generated.
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "janeeric879@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && data.email.size() > 0 &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['uid', 'email', 'message', 'createdAt']) &&
+             data.uid is string && data.email is string &&
+             data.message is string && data.message.size() < 5000;
+    }
+
+    function isValidKnowledge(data) {
+      return data.keys().hasAll(['title', 'content', 'type', 'createdAt']) &&
+             data.title is string && data.title.size() < 200 &&
+             data.content is string && data.content.size() < 50000 &&
+             data.type in ['interview', 'ip', 'copywriting'];
+    }
+
+    function isValidHistory(data) {
+      return data.keys().hasAll(['uid', 'type', 'content', 'createdAt']) &&
+             data.uid is string && data.type is string &&
+             data.content is string && data.content.size() < 100000;
+    }
+
+    function isValidUserProgress(data) {
+      return data.keys().hasAll(['uid', 'updatedAt']) &&
+             data.uid is string &&
+             (!('interviewMessages' in data) || data.interviewMessages is string) &&
+             (!('interviewReport' in data) || data.interviewReport is string) &&
+             (!('infoReport' in data) || data.infoReport is string) &&
+             (!('positioningReport' in data) || data.positioningReport is string) &&
+             (!('copywritingOutput' in data) || data.copywritingOutput is string) &&
+             (!('copywritingMessages' in data) || data.copywritingMessages is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidFeedback(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /knowledgeBase/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidKnowledge(request.resource.data);
+      allow update: if isAdmin() && isValidKnowledge(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /history/{historyId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidHistory(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && isValidHistory(request.resource.data) && resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    match /userProgress/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isAuthenticated() && isValidUserProgress(request.resource.data) && isOwner(uid);
+      allow update: if isAuthenticated() && isValidUserProgress(request.resource.data) && isOwner(uid);
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+  }
+}
