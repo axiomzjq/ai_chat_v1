@@ -1,94 +1,153 @@
 # my-ai-chat 项目提示词
 
-## 项目大纲
+## 项目概述
 
-### 目标
-构建一个基于网页的通用 AI 对话系统，采用 React + Vite + Tailwind CSS 技术栈，使用 Node.js/npm 开发。系统设计借鉴 elitefounder-ai 的极简黑白美学、大圆角设计语言、精致的排版层次，但实现为一个通用的多会话 AI 聊天应用。
+**my-ai-chat** 是基于 `elitefounder-ai` 完整移植的 **ToB 创始人 IP 深度定制系统**。以参考项目的所有页面和样式为最高优先级，完整保留了其 3100 行单文件组件架构、四步工作流、多 Agent 协作、Firebase 认证与数据持久化、知识库 RAG 等全部功能。
 
-### 核心功能
-1. **多会话管理** — 左侧边栏显示历史会话列表，支持新建、重命名、删除会话
-2. **AI 对话** — 支持文本输入、Enter 发送、Markdown 渲染、代码块高亮
-3. **文件上传** — 支持上传文本文件（.txt/.md）作为上下文注入对话
-4. **响应式布局** — 桌面端双栏（侧边栏+聊天区），移动端单栏
-5. **本地持久化** — 使用 localStorage 保存会话历史和消息
-6. **后端 API 预留** — 服务层封装 AI 调用，便于切换不同模型提供商
+在此基础上，项目扩展了独立的 **RAG 后端服务骨架** 和 **AI 知识库（ai-database）**，用于持续迭代和演进。
 
-### 技术栈
-- React 19 + Vite 8
-- Tailwind CSS 4（原子化样式，极简黑白灰主题）
-- lucide-react（图标）
-- react-markdown（Markdown 渲染）
-- clsx + tailwind-merge（类名管理）
-- Node.js + npm（开发/构建环境）
+---
 
-### 目录结构
+## 核心功能
+
+### 1. 四步深度定制工作流（来自 elitefounder-ai）
+| 步骤 | Agent | 职责 | 解锁条件 |
+|------|-------|------|---------|
+| **访谈** | 访谈顾问 | 深度挖掘创始人故事（basic → deep 两阶段） | 始终可用 |
+| **信息** | 信息顾问 | 企业与行业分析报告 | 完成访谈报告 |
+| **定位** | 定位顾问 | 输出 3 版 IP 定位方案 | 完成信息报告 |
+| **文案** | 文案顾问 | 短视频口播文案创作（JSON 输出） | 完成定位报告 |
+| **历史** | — | 查看云端存档记录 | 始终可用 |
+
+### 2. 认证与权限
+- 邮箱/密码注册登录
+- Google 账号登录
+- 管理员后台（用户管理、反馈查看、知识库训练）
+- 使用时长限制机制
+
+### 3. 知识库 RAG
+- 管理员上传语料（txt/md/docx/xlsx）
+- AI 自动整理语料
+- 按 Agent 类型过滤注入（interview/ip/copywriting）
+- 前端全量拼接注入（简单 RAG）
+
+### 4. 交互增强
+- Markdown 渲染 + 折叠分节
+- 语音输入（Web Speech API）
+- TTS 朗读（Gemini 音频生成）
+- 文件解析（Excel/Word/Text）
+- 报告下载（Markdown/Word）
+- 剪贴板复制
+
+### 5. 扩展骨架（RAG 后端）
+- `server/` — Node.js + Express 后端服务（预留）
+- `knowledge-base/` — 原始文档存储
+- `docs/rag/` — RAG 架构文档
+- `ai-database/` — 从 elitefounder-ai 提取的知识库
+
+---
+
+## 技术栈
+
+| 层级 | 技术 | 版本 |
+|------|------|------|
+| 框架 | React + TypeScript | ^19.0.0 / ~5.8.2 |
+| 构建 | Vite | ^6.2.0 |
+| 样式 | Tailwind CSS v4 | ^4.1.14 |
+| AI SDK | @google/genai | ^1.29.0 |
+| 后端 | Firebase (Auth + Firestore) | ^12.11.0 |
+| 动画 | motion (Framer Motion) | ^12.23.24 |
+| 图标 | lucide-react | ^0.546.0 |
+| Markdown | react-markdown | ^10.1.0 |
+| 文件解析 | mammoth + xlsx | ^1.12.0 + ^0.18.5 |
+| 导出 | html2canvas + jspdf | ^1.4.1 + ^4.2.1 |
+
+---
+
+## 目录结构
+
 ```
 my-ai-chat/
-├── ai-database/              # AI 知识库（存储从 elitefounder-ai 学到的架构/样式/模式）
-├── server/                   # Node.js 后端服务（预留，当前阶段未实现）
-├── src/
-│   ├── components/           # React 组件
-│   │   ├── Sidebar.jsx       # 会话侧边栏
-│   │   ├── ChatHeader.jsx    # 聊天区域头部
-│   │   ├── MessageList.jsx   # 消息列表
-│   │   ├── MessageBubble.jsx # 单条消息气泡
-│   │   ├── ChatInput.jsx     # 底部输入框
-│   │   └── WelcomeScreen.jsx # 空会话欢迎页
-│   ├── hooks/
-│   │   └── useChat.js        # 聊天状态管理 Hook
-│   ├── services/
-│   │   └── aiService.js      # AI API 调用封装
+├── ai-database/              # AI 知识库（从 elitefounder-ai 提取的架构/样式/模式/提示词）
+│   ├── architecture-analysis.md
+│   ├── style-guide.md
+│   ├── component-patterns.md
+│   ├── tech-stack.md
+│   └── prompts-collection.md
+│
+├── docs/rag/
+│   └── ARCHITECTURE.md       # RAG 系统架构文档
+│
+├── knowledge-base/           # 知识库文件存储
+│   ├── raw/                  # 原始文档
+│   ├── processed/            # 清洗后文本（gitignored）
+│   └── embeddings/           # 向量索引（gitignored）
+│
+├── server/                   # Node.js 后端服务骨架
+│   ├── index.js
+│   ├── package.json
+│   ├── config/rag.js
+│   ├── middleware/errorHandler.js
+│   └── routes/services/models/utils/（.gitkeep）
+│
+├── scripts/
+│   └── build-index.js        # 批量构建索引脚本
+│
+├── src/                      # 前端源码（完整移植自 elitefounder-ai）
+│   ├── App.tsx               # 主组件（3100行，含全部业务逻辑）
+│   ├── firebase.ts           # Firebase 初始化与封装
+│   ├── main.tsx              # 入口文件
+│   ├── index.css             # Tailwind 入口 + 自定义样式
 │   ├── lib/
-│   │   └── utils.js          # cn() 等工具函数
-│   ├── styles/
-│   │   └── index.css         # Tailwind 入口 + 自定义样式
-│   ├── App.jsx               # 主应用组件
-│   └── main.jsx              # 入口文件
+│   │   └── utils.ts          # cn() 工具函数
+│   └── assets/               # 静态资源
+│
+├── firebase-applet-config.json   # Firebase 配置
+├── tsconfig.json
+├── vite.config.ts
 ├── index.html
 ├── package.json
 └── PROJECT_PROMPT.md         # 本文件
 ```
 
+---
+
 ## 当前进度
 
 ### ✅ 已完成
-- [x] 阅读并深度分析 elitefounder-ai 全部源码（3100行 App.tsx + 配置文件）
-- [x] 提取架构分析、样式规范、组件模式、技术栈、提示词等知识
-- [x] 创建 ai-database/ 知识库，存入5份核心文档
-- [x] 设计 my-ai-chat 项目大纲与技术方案
-- [x] 创建本 PROJECT_PROMPT.md
-
-### ✅ 已完成
-- [x] 配置 Tailwind CSS 和安装项目依赖
-- [x] 实现核心工具函数（cn()、generateId()、formatTime()）
-- [x] 实现全局样式（index.css，含 Markdown 渲染样式）
-- [x] 实现 useChat Hook（会话管理、消息发送、本地持久化）
-- [x] 实现 AI 服务层封装（Mock Mode + Google GenAI / OpenAI 预留接口）
-- [x] 构建 Sidebar 组件（会话列表、新建、重命名、删除）
-- [x] 构建 ChatHeader 组件
-- [x] 构建 MessageList + MessageBubble 组件（Markdown、代码块、复制、朗读）
-- [x] 构建 ChatInput 组件（文本输入、文件上传、语音输入、自适应高度）
-- [x] 构建 WelcomeScreen 组件（快捷提问入口）
-- [x] 组装 App.jsx 主布局（双栏响应式）
-- [x] 运行验证（npm run dev）— 成功启动于 localhost:5174
+- [x] 深度阅读 elitefounder-ai 全部源码（3100 行 App.tsx + 配置文件）
+- [x] 提取并建立 ai-database 知识库（5 份核心文档）
+- [x] 完整移植 elitefounder-ai 前端代码到 my-ai-chat/src/（TypeScript 源码直接复制）
+- [x] 移植配置文件（vite.config.ts, tsconfig.json, firebase-applet-config.json, index.html）
+- [x] 更新 package.json 包含全部依赖并安装
+- [x] 清理旧的通用 AI Chat 组件代码
+- [x] 保留 RAG 后端骨架（server/、docs/、knowledge-base/、scripts/）
+- [x] 运行验证成功（npm run dev → localhost:5175）
+- [x] 推送至 GitHub（axiomzjq/ai_chat_v1）
 
 ### ⏳ 待完成
-- [ ] 接入真实 AI API（当前为 Mock 模式，需配置 VITE_GEMINI_API_KEY 或 VITE_OPENAI_API_KEY）
-- [ ] 流式输出（streamMessageToAI 已实现但尚未接入 UI）
-- [ ] 后端 server/ 服务开发（RAG 向量检索、文档解析）
-- [ ] 部署上线（Vercel）
+- [ ] 接入真实 Gemini API Key（当前 Vite 会读取环境变量 `GEMINI_API_KEY`）
+- [ ] 后端 RAG 服务开发（server/ 当前为骨架，需实现文档解析、分块、向量化、检索）
+- [ ] 部署上线（Vercel / Firebase Hosting）
 
-## 样式参考基准
-直接继承 elitefounder-ai 的设计语言：
-- 背景: `#F8F9FA` / `bg-gray-50`
-- 卡片: `bg-white rounded-3xl border border-gray-100 shadow-sm`
-- 按钮: `bg-black text-white rounded-2xl hover:bg-gray-800`
-- 标签: `text-[10px] font-bold uppercase tracking-widest text-gray-400`
-- 用户气泡: `bg-black text-white rounded-tr-none shadow-lg`
-- AI 气泡: `bg-white border border-gray-100 rounded-tl-none shadow-sm`
-- 输入框: `bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-black/5`
-- 头像: `w-10 h-10 rounded-full border border-gray-200`
-- 动画: Framer Motion（入场 fade+y，列表 AnimatePresence）
+---
 
-## 下一步行动
-当前应进入 "配置 Tailwind CSS 和安装项目依赖" 阶段，执行 npm install 并写入配置文件。
+## 启动方式
+
+```bash
+cd my-ai-chat
+npm install
+npm run dev
+# 浏览器打开 http://localhost:5173
+```
+
+## 环境变量
+
+项目根目录创建 `.env.local`：
+```env
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+---
+
+> **设计基准**：所有页面样式严格遵循 elitefounder-ai 的极简黑白灰设计语言——大圆角（rounded-2xl/3xl）、细边框（border-gray-100）、轻阴影（shadow-xl）、精致标签文字（text-[10px] uppercase tracking-widest）。
