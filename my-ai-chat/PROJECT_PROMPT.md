@@ -122,11 +122,15 @@ my-ai-chat/
 - [x] 更新 package.json 包含全部依赖并安装
 - [x] 清理旧的通用 AI Chat 组件代码
 - [x] 保留 RAG 后端骨架（server/、docs/、knowledge-base/、scripts/）
-- [x] 运行验证成功（npm run dev → localhost:5175）
+- [x] 运行验证成功（npm run dev → localhost:5179，登录页正常显示）
 - [x] 推送至 GitHub（axiomzjq/ai_chat_v1）
+- [x] 修复 Vite 与 Tailwind CSS 版本兼容性（锁定 vite@6.2.0 + tailwindcss@4.1.14）
+- [x] 添加 Firebase 初始化保护（try-catch + mock 降级）
+- [x] 添加 RootErrorBoundary 根级错误边界
+- [x] 提供 GEMINI_API_KEY 占位符（使 UI 在无真实 key 时仍可挂载）
 
 ### ⏳ 待完成
-- [ ] 接入真实 Gemini API Key（当前 Vite 会读取环境变量 `GEMINI_API_KEY`）
+- [ ] 替换为真实 Gemini API Key（当前为占位符，AI 功能返回 401）
 - [ ] 后端 RAG 服务开发（server/ 当前为骨架，需实现文档解析、分块、向量化、检索）
 - [ ] 部署上线（Vercel / Firebase Hosting）
 
