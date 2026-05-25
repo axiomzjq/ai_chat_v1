@@ -1111,9 +1111,18 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>('interview');
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
+    let parsedHistory: HistoryItem[] = [];
+    if (saved) {
+      try {
+        parsedHistory = JSON.parse(saved);
+        if (!Array.isArray(parsedHistory)) parsedHistory = [];
+      } catch {
+        parsedHistory = [];
+      }
+    }
     return {
       ...initialState,
-      history: saved ? JSON.parse(saved) : [],
+      history: parsedHistory,
     };
   });
 

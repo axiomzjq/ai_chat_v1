@@ -3,11 +3,30 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-// Initialize Firebase SDK
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+// Initialize Firebase SDK (with fallback to prevent crash on module load)
+let app: any;
+let db: any;
+let auth: any;
+let googleProvider: any;
+let _firebaseInitError: Error | null = null;
+
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  auth = getAuth(app);
+  googleProvider = new GoogleAuthProvider();
+} catch (err) {
+  _firebaseInitError = err instanceof Error ? err : new Error(String(err));
+  console.error('Firebase initialization failed:', _firebaseInitError);
+  // Provide minimal mocks so the UI can still mount and show an error
+  app = null;
+  db = {} as any;
+  auth = { currentUser: null, onAuthStateChanged: () => () => {} } as any;
+  googleProvider = {} as any;
+}
+
+export { db, auth, googleProvider };
+export const firebaseInitError = _firebaseInitError;
 
 // Auth Helpers
 export { signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword };
