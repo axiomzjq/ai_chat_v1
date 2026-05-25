@@ -46,15 +46,9 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
+import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
 import { 
-  auth, 
   db, 
-  googleProvider,
-  signInWithPopup,
-  signOut, 
-  onAuthStateChanged, 
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
   collection, 
   doc, 
   getDoc, 

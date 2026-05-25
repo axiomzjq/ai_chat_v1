@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { Authing } from '@authing/web';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // ==================== Firebase App & Firestore ====================
@@ -20,9 +21,21 @@ try {
 export { db };
 export const firebaseInitError = _firebaseInitError;
 
-// ==================== Auth Mock (Replaces Firebase Auth) ====================
-// 使用 localStorage 模拟用户认证，为后续接入 Authing 做准备
-// TODO: 接入 Authing 后，替换为真实认证 SDK
+// ==================== Authing Integration (Replaces Firebase Auth) ====================
+// 使用 Authing 替代 Firebase Auth，解决中国大陆网络访问问题
+
+let authingClient: Authing | null = null;
+try {
+  authingClient = new Authing({
+    domain: 'https://fnbd4tjpcxb5-demo.authing.cn',
+    appId: '6a13a72bc34d1d925e777d82',
+    userPoolId: '6a13a72bc34d1d925e777d82',
+    redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
+    scope: 'openid profile email offline_access',
+  });
+} catch (err) {
+  console.error('Authing init failed:', err);
+}
 
 export type FirebaseUser = {
   uid: string;
@@ -35,103 +48,123 @@ export type FirebaseUser = {
   providerData: any[];
 };
 
-interface MockUser {
-  uid: string;
-  email: string;
-  password: string;
-  displayName: string;
-  role: 'user' | 'admin';
+let _currentUser: FirebaseUser | null = null;
+
+function setCurrentUser(user: FirebaseUser | null) {
+  _currentUser = user;
+  // 触发所有监听器
+  _authListeners.forEach(cb => cb(user));
 }
 
-const USERS_KEY = 'mock_firebase_users';
-const CURRENT_USER_KEY = 'mock_firebase_current_user';
-
-function getMockUsers(): MockUser[] {
-  try { return JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch { return []; }
-}
-
-function saveMockUsers(users: MockUser[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function getCurrentMockUser(): MockUser | null {
-  try { return JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null'); } catch { return null; }
-}
-
-function saveCurrentMockUser(user: MockUser | null) {
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-}
-
-function mockUserToFirebaseUser(user: MockUser | null): FirebaseUser | null {
-  if (!user) return null;
-  return {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-    photoURL: null,
-    emailVerified: true,
-    isAnonymous: false,
-    tenantId: null,
-    providerData: [],
-  };
-}
+const _authListeners = new Set<(user: FirebaseUser | null) => void>();
 
 // Auth object compatible with Firebase Auth
 export const auth = {
-  get currentUser() { return mockUserToFirebaseUser(getCurrentMockUser()); },
+  get currentUser() { return _currentUser; },
 };
 
 export const googleProvider = {};
 
 export async function signInWithPopup(_auth: any, _provider: any) {
-  const mockUser: MockUser = {
-    uid: 'google-' + Date.now(),
-    email: 'demo@example.com',
-    password: '',
-    displayName: 'Demo User',
-    role: 'user',
-  };
-  saveCurrentMockUser(mockUser);
-  return { user: mockUserToFirebaseUser(mockUser) };
+  if (!authingClient) throw new Error('Authing 未初始化');
+  try {
+    const loginState = await authingClient.loginWithPopup();
+    if (!loginState) throw new Error('登录取消');
+    const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
+    if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
+    const user = {
+      uid: userInfo.sub,
+      email: userInfo.email || null,
+      displayName: userInfo.name || userInfo.nickname || null,
+      photoURL: userInfo.picture || null,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: null,
+      providerData: [],
+    };
+    setCurrentUser(user);
+    return { user };
+  } catch (err: any) {
+    console.error('Authing popup login failed:', err);
+    throw { code: 'auth/popup-closed-by-user', message: err.message || '登录失败' };
+  }
 }
 
 export async function signOut(_auth: any) {
-  saveCurrentMockUser(null);
+  if (authingClient) {
+    try {
+      await authingClient.logoutWithRedirect({ redirectUri: window.location.origin });
+    } catch (err) {
+      console.error('Authing logout failed:', err);
+    }
+  }
+  setCurrentUser(null);
 }
 
 export function onAuthStateChanged(_auth: any, callback: (user: FirebaseUser | null) => void) {
-  callback(mockUserToFirebaseUser(getCurrentMockUser()));
-  const handler = () => callback(mockUserToFirebaseUser(getCurrentMockUser()));
-  window.addEventListener('storage', handler);
-  return () => window.removeEventListener('storage', handler);
+  // 初始调用
+  callback(_currentUser);
+  _authListeners.add(callback);
+  return () => _authListeners.delete(callback);
 }
 
 export async function createUserWithEmailAndPassword(_auth: any, email: string, password: string) {
-  const users = getMockUsers();
-  if (users.find(u => u.email === email)) {
-    throw { code: 'auth/email-already-in-use', message: '该邮箱已被注册。' };
+  if (!authingClient) throw new Error('Authing 未初始化');
+  try {
+    // Authing 的 loginByEmail 支持 autoRegister 自动注册
+    const loginState = await authingClient.loginByEmail({
+      passwordPayload: { email, password },
+      options: { autoRegister: true },
+    });
+    const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
+    if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
+    const user = {
+      uid: userInfo.sub,
+      email: userInfo.email || null,
+      displayName: userInfo.name || userInfo.nickname || null,
+      photoURL: userInfo.picture || null,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: null,
+      providerData: [],
+    };
+    setCurrentUser(user);
+    return { user };
+  } catch (err: any) {
+    console.error('Authing register failed:', err);
+    // 如果邮箱已存在，Authing 可能会返回特定错误码
+    const msg = err.message || String(err);
+    if (msg.includes('已存在') || msg.includes('exists')) {
+      throw { code: 'auth/email-already-in-use', message: '该邮箱已被注册。' };
+    }
+    throw { code: 'auth/weak-password', message: msg };
   }
-  const newUser: MockUser = {
-    uid: 'local-' + Date.now(),
-    email,
-    password,
-    displayName: email.split('@')[0],
-    role: email === 'janeeric879@gmail.com' ? 'admin' : 'user',
-  };
-  users.push(newUser);
-  saveMockUsers(users);
-  saveCurrentMockUser(newUser);
-  return { user: mockUserToFirebaseUser(newUser) };
 }
 
 export async function signInWithEmailAndPassword(_auth: any, email: string, password: string) {
-  const users = getMockUsers();
-  const user = users.find(u => u.email === email && u.password === password);
-  if (!user) {
+  if (!authingClient) throw new Error('Authing 未初始化');
+  try {
+    const loginState = await authingClient.loginByEmail({
+      passwordPayload: { email, password },
+    });
+    const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
+    if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
+    const user = {
+      uid: userInfo.sub,
+      email: userInfo.email || null,
+      displayName: userInfo.name || userInfo.nickname || null,
+      photoURL: userInfo.picture || null,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: null,
+      providerData: [],
+    };
+    setCurrentUser(user);
+    return { user };
+  } catch (err: any) {
+    console.error('Authing login failed:', err);
     throw { code: 'auth/invalid-credential', message: '邮箱或密码错误。' };
   }
-  saveCurrentMockUser(user);
-  return { user: mockUserToFirebaseUser(user) };
 }
 
 // ==================== Firestore Helpers ====================
