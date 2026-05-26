@@ -49,6 +49,8 @@ import { cn } from './lib/utils';
 import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
 import { 
   db, 
+  auth,
+  onAuthStateChanged,
   collection, 
   doc, 
   getDoc, 
