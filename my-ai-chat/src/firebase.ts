@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { Authing } from '@authing/web';
+import { AuthenticationClient, SceneType } from 'authing-js-sdk';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // ==================== Firebase App & Firestore ====================
@@ -25,13 +26,19 @@ export const firebaseInitError = _firebaseInitError;
 // 使用 Authing 替代 Firebase Auth，解决中国大陆网络访问问题
 
 let authingClient: Authing | null = null;
+let authClient: AuthenticationClient | null = null;
 try {
   authingClient = new Authing({
     domain: 'https://fnbd4tjpcxb5-demo.authing.cn',
     appId: '6a13a72bc34d1d925e777d82',
-    userPoolId: '6a13a72bc34d1d925e777d82',
+    userPoolId: '6a13a72a8abfe23c1e51cc0a',
     redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
     scope: 'openid profile email offline_access',
+  });
+  // authing-js-sdk client for phone code login/register
+  authClient = new AuthenticationClient({
+    appId: '6a13a72bc34d1d925e777d82',
+    appHost: 'https://fnbd4tjpcxb5-demo.authing.cn',
   });
 } catch (err) {
   console.error('Authing init failed:', err);
@@ -73,15 +80,18 @@ export async function signInWithPopup(_auth: any, _provider: any) {
     const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
     if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
     const user = {
-      uid: userInfo.sub,
+      uid: loginState.parsedIdToken?.sub || (userInfo as any).sub || userInfo.email || '',
       email: userInfo.email || null,
       displayName: userInfo.name || userInfo.nickname || null,
-      photoURL: userInfo.picture || null,
+      photoURL: userInfo.photo || null,
       emailVerified: true,
       isAnonymous: false,
       tenantId: null,
       providerData: [],
     };
+    if (loginState.accessToken) {
+      localStorage.setItem('authing_access_token', loginState.accessToken);
+    }
     setCurrentUser(user);
     return { user };
   } catch (err: any) {
@@ -105,7 +115,7 @@ export function onAuthStateChanged(_auth: any, callback: (user: FirebaseUser | n
   // 初始调用
   callback(_currentUser);
   _authListeners.add(callback);
-  return () => _authListeners.delete(callback);
+  return () => { _authListeners.delete(callback); };
 }
 
 export async function createUserWithEmailAndPassword(_auth: any, email: string, password: string) {
@@ -119,10 +129,10 @@ export async function createUserWithEmailAndPassword(_auth: any, email: string, 
     const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
     if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
     const user = {
-      uid: userInfo.sub,
+      uid: loginState.parsedIdToken?.sub || (userInfo as any).sub || userInfo.email || '',
       email: userInfo.email || null,
       displayName: userInfo.name || userInfo.nickname || null,
-      photoURL: userInfo.picture || null,
+      photoURL: userInfo.photo || null,
       emailVerified: true,
       isAnonymous: false,
       tenantId: null,
@@ -150,10 +160,10 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
     const userInfo = await authingClient.getUserInfo({ accessToken: loginState.accessToken });
     if ('apiCode' in userInfo) throw new Error((userInfo as any).message);
     const user = {
-      uid: userInfo.sub,
+      uid: loginState.parsedIdToken?.sub || (userInfo as any).sub || userInfo.email || '',
       email: userInfo.email || null,
       displayName: userInfo.name || userInfo.nickname || null,
-      photoURL: userInfo.picture || null,
+      photoURL: userInfo.photo || null,
       emailVerified: true,
       isAnonymous: false,
       tenantId: null,
@@ -166,6 +176,133 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
     throw { code: 'auth/invalid-credential', message: '邮箱或密码错误。' };
   }
 }
+
+// ==================== Phone Code Login/Register (authing-js-sdk) ====================
+
+export async function sendPhoneCode(phone: string, scene: 'login' | 'register' = 'login') {
+  if (!authClient) throw new Error('Authing 未初始化');
+  const sceneType = scene === 'register' ? SceneType.SCENE_TYPE_REGISTER : SceneType.SCENE_TYPE_LOGIN;
+  try {
+    const result = await authClient.sendSmsCode(phone, '+86', sceneType);
+    return result;
+  } catch (err: any) {
+    console.error('发送验证码失败:', err);
+    throw new Error(err.message || '发送验证码失败');
+  }
+}
+
+export async function loginByPhoneCode(phone: string, code: string) {
+  if (!authClient) throw new Error('Authing 未初始化');
+  try {
+    // 先尝试登录
+    let authingUser = await authClient.loginByPhoneCode(phone, code, { phoneCountryCode: '+86' });
+    const user: FirebaseUser = {
+      uid: authingUser.id,
+      email: authingUser.email || authingUser.phone || null,
+      displayName: authingUser.name || authingUser.nickname || null,
+      photoURL: authingUser.photo || null,
+      emailVerified: authingUser.emailVerified || false,
+      isAnonymous: false,
+      tenantId: null,
+      providerData: [],
+    };
+    // 保存 token 到 localStorage，供 API 客户端使用
+    if (authingUser.token) {
+      localStorage.setItem('authing_access_token', authingUser.token);
+    }
+    setCurrentUser(user);
+    return user;
+  } catch (err: any) {
+    const msg = err.message || String(err);
+    console.error('[Authing] loginByPhoneCode failed:', err);
+
+    // 如果明确提示无权限，直接抛出配置提示
+    if (msg.includes('无权限登录此应用') || msg.includes('1576')) {
+      throw new Error('该用户没有权限访问此应用（错误码 1576）。请在 Authing 控制台 → 应用详情 → 访问授权 → 将访问控制设为「允许所有用户池用户访问」，或将该用户加入白名单。');
+    }
+    if (msg.includes('无权限') || msg.includes('权限') || msg.includes('无权') || msg.includes('未开启')) {
+      throw new Error('当前应用未开启手机号验证码登录。请在 Authing 控制台 → 应用详情 → 登录控制 → 开启「手机号验证码」登录方式。');
+    }
+
+    // 如果用户不存在，尝试注册
+    if (msg.includes('不存在') || msg.includes('not exists') || msg.includes('NOT_FOUND') || msg.includes('用户未找到') || msg.includes('未注册')) {
+      try {
+        const authingUser = await authClient.registerByPhoneCode(phone, code, undefined, undefined, { phoneCountryCode: '+86' });
+        const user: FirebaseUser = {
+          uid: authingUser.id,
+          email: authingUser.email || authingUser.phone || null,
+          displayName: authingUser.name || authingUser.nickname || null,
+          photoURL: authingUser.photo || null,
+          emailVerified: authingUser.emailVerified || false,
+          isAnonymous: false,
+          tenantId: null,
+          providerData: [],
+        };
+        setCurrentUser(user);
+        return user;
+      } catch (regErr: any) {
+        console.error('[Authing] registerByPhoneCode failed:', regErr);
+        const regMsg = regErr.message || String(regErr);
+        if (regMsg.includes('无权限') || regMsg.includes('权限') || regMsg.includes('无权') || regMsg.includes('未开启')) {
+          throw new Error('当前应用未开启手机号验证码注册。请在 Authing 控制台 → 应用详情 → 登录控制 → 开启「手机号验证码」登录/注册方式。');
+        }
+        throw new Error(regMsg || '注册失败');
+      }
+    }
+    throw new Error(msg || '登录失败');
+  }
+}
+
+/**
+ * [实验性] 直接调用 Authing REST API（v3）登录
+ * 仅用于调试，确认 authing-js-sdk v2 GraphQL API 是否与 v3 控制台兼容
+ * 需要先在 App.tsx 中替换 loginByPhoneCode 调用为 loginByPhoneCodeDirect 进行测试
+ */
+/*
+export async function loginByPhoneCodeDirect(phone: string, code: string) {
+  const appId = '6a13a72bc34d1d925e777d82';
+  const appHost = 'https://fnbd4tjpcxb5-demo.authing.cn';
+  const url = `${appHost}/api/v3/signin-by-passcode`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-authing-app-id': appId,
+    },
+    body: JSON.stringify({
+      connection: 'PASSCODE',
+      passCodePayload: {
+        phone: phone,
+        passCode: code,
+        phoneCountryCode: '+86',
+      },
+    }),
+  });
+
+  const data = await response.json();
+  console.log('[Authing Direct API] response:', data);
+
+  if (!response.ok || data.statusCode !== 200) {
+    const errMsg = data.message || JSON.stringify(data);
+    throw new Error(`Authing API 错误: ${errMsg}`);
+  }
+
+  const authingUser = data.data;
+  const user: FirebaseUser = {
+    uid: authingUser.id || authingUser.sub || phone,
+    email: authingUser.email || authingUser.phone || null,
+    displayName: authingUser.name || authingUser.nickname || null,
+    photoURL: authingUser.photo || null,
+    emailVerified: authingUser.emailVerified || false,
+    isAnonymous: false,
+    tenantId: null,
+    providerData: [],
+  };
+  setCurrentUser(user);
+  return user;
+}
+*/
 
 // ==================== Firestore Helpers ====================
 export { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, Timestamp };

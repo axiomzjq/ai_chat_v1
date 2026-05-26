@@ -9,3 +9,5 @@ export const AUTHING_CONFIG = {
   host: AUTHING_HOST,
   redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
 };
+
+export const isAuthingConfigured = !!AUTHING_APP_ID && !!AUTHING_HOST;

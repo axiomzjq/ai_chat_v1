@@ -32,7 +32,7 @@ function saveLocalUser(user: AuthUser | null) {
 export function useAuthing() {
   const [user, setUser] = useState<AuthUser | null>(() => loadLocalUser());
   const [loading, setLoading] = useState(false);
-  const configured = isAuthingConfigured();
+  const configured = isAuthingConfigured;
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);

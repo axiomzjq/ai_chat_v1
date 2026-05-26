@@ -47,24 +47,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
+import * as api from './lib/api';
 import { 
-  db, 
   auth,
   onAuthStateChanged,
-  collection, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
-  addDoc, 
-  serverTimestamp, 
-  handleFirestoreError,
-  OperationType,
+  sendPhoneCode,
+  loginByPhoneCode,
+  signInWithPopup,
+  googleProvider,
+  signOut,
   FirebaseUser
 } from './firebase';
 
@@ -539,9 +530,35 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
   setIsAdmin: (val: boolean) => void
 }) {
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isRegister, setIsRegister] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [countdown, setCountdown] = useState(0);
+
+  // 倒计时
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  const handleSendCode = async () => {
+    if (!phone || phone.length < 11) {
+      alert('请输入有效的手机号码');
+      return;
+    }
+    if (countdown > 0) return;
+    try {
+      setLoading(true);
+      await sendPhoneCode(phone);
+      setCountdown(60);
+      alert('验证码已发送');
+    } catch (error: any) {
+      console.error('Send code error:', error);
+      alert(error.message || '发送验证码失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -549,26 +566,19 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
-      // Check if user exists in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      // 从后端 API 获取用户角色（替代 Firestore）
+      const token = localStorage.getItem('authing_access_token');
       let role: 'user' | 'admin' = 'user';
       
-      if (userDoc.exists()) {
-        role = userDoc.data().role;
-      } else {
-        // First time login - set role
-        // Default admin if email matches
-        if (user.email === 'janeeric879@gmail.com') {
-          role = 'admin';
+      if (token) {
+        try {
+          const authData = await api.verifyAuth(token);
+          role = authData.user.role;
+        } catch (e) {
+          console.error('获取用户信息失败:', e);
+          // fallback: 根据 email 判断
+          if (user.email === 'janeeric879@gmail.com') role = 'admin';
         }
-        
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          role: role,
-          usageDuration: 0,
-          createdAt: serverTimestamp()
-        });
       }
 
       if (isAdmin && role !== 'admin') {
@@ -588,39 +598,24 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!phone || !code) return;
     
     setLoading(true);
     try {
-      let user: FirebaseUser;
-      if (isRegister) {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        user = result.user;
-      } else {
-        const result = await signInWithEmailAndPassword(auth, email, password);
-        user = result.user;
-      }
+      const user = await loginByPhoneCode(phone, code);
       
-      // Check if user exists in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      // 从后端 API 获取用户角色（替代 Firestore）
+      const token = localStorage.getItem('authing_access_token');
       let role: 'user' | 'admin' = 'user';
       
-      if (userDoc.exists()) {
-        role = userDoc.data().role;
-      } else {
-        // First time login - set role
-        // Default admin if email matches
-        if (user.email === 'janeeric879@gmail.com') {
-          role = 'admin';
+      if (token) {
+        try {
+          const authData = await api.verifyAuth(token);
+          role = authData.user.role;
+        } catch (e) {
+          console.error('获取用户信息失败:', e);
+          if (user.email === 'janeeric879@gmail.com') role = 'admin';
         }
-        
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          role: role,
-          usageDuration: 0,
-          createdAt: serverTimestamp()
-        });
       }
 
       if (isAdmin && role !== 'admin') {
@@ -632,12 +627,8 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
       onLogin(user, role);
     } catch (error: any) {
       console.error('Auth error:', error);
-      let msg = '操作失败，请重试。';
-      if (error.code === 'auth/email-already-in-use') msg = '该邮箱已被注册。';
-      if (error.code === 'auth/invalid-email') msg = '无效的邮箱地址。';
-      if (error.code === 'auth/weak-password') msg = '密码太弱，请至少使用6位字符。';
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') msg = '邮箱或密码错误。';
-      alert(msg);
+      const errMsg = error.message || '登录失败，请检查验证码';
+      alert(errMsg);
     } finally {
       setLoading(false);
     }
@@ -656,7 +647,7 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           </div>
           <h1 className="text-4xl font-black tracking-tighter text-gray-900">创始人 IP 顾问</h1>
           <p className="text-gray-500 font-medium tracking-tight">
-            {isAdmin ? '管理员控制台' : (isRegister ? '注册新账号' : '开启您的个人品牌进化之旅')}
+            {isAdmin ? '管理员控制台' : '手机号登录 / 注册'}
           </p>
         </div>
 
@@ -673,34 +664,46 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
               <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">邮箱地址</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">手机号码</label>
                 <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="tel" 
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   required
+                  maxLength={11}
                   className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                  placeholder="your@email.com"
+                  placeholder="13800138000"
                 />
               </div>
               <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">登录密码</label>
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                  placeholder="••••••••"
-                />
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">验证码</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    required
+                    maxLength={6}
+                    className="flex-1 bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
+                    placeholder="123456"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={loading || countdown > 0 || !phone}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-2xl font-bold text-sm hover:bg-gray-300 transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {countdown > 0 ? `${countdown}秒后重发` : '获取验证码'}
+                  </button>
+                </div>
               </div>
               <button 
                 type="submit"
-                disabled={loading}
+                disabled={loading || !phone || !code}
                 className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={20} />}
-                {isRegister ? '立即注册' : '立即登录'}
+                登录 / 注册
               </button>
             </form>
           )}
@@ -711,14 +714,6 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           </div>
 
           <div className="flex flex-col gap-4">
-            {!isAdmin && (
-              <button 
-                onClick={() => setIsRegister(!isRegister)}
-                className="w-full text-sm font-bold text-gray-500 hover:text-black transition-colors"
-              >
-                {isRegister ? '已有账号？去登录' : '没有账号？去注册'}
-              </button>
-            )}
             <button 
               onClick={() => setIsAdmin(!isAdmin)}
               className="w-full text-sm font-bold text-gray-500 hover:text-black transition-colors"
@@ -729,7 +724,7 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
         </div>
 
         <p className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">
-          Powered by Gemini 3.1 Pro & Firebase
+          Powered by Gemini 3.1 Pro & Authing
         </p>
       </motion.div>
     </div>
@@ -746,36 +741,47 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
   const [newDoc, setNewDoc] = useState({ title: '', content: '', type: 'interview' as any });
 
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
-    });
-    const unsubFeedback = onSnapshot(query(collection(db, 'feedback'), orderBy('createdAt', 'desc')), (snapshot) => {
-      setFeedbacks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubKnowledge = onSnapshot(query(collection(db, 'knowledgeBase'), orderBy('createdAt', 'desc')), (snapshot) => {
-      setKnowledge(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    setLoading(false);
-    return () => {
-      unsubUsers();
-      unsubFeedback();
-      unsubKnowledge();
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // 加载用户列表（后端暂不提供此接口，用空数组占位）
+        // TODO: 添加 /api/admin/users 接口
+        setUsers([]);
+        
+        // 加载反馈列表
+        const fbRes = await api.getFeedback({ pageSize: 100 });
+        setFeedbacks(fbRes.data || []);
+        
+        // 加载知识库
+        const kbRes = await api.getKnowledgeBase({ pageSize: 100 });
+        setKnowledge(kbRes.data || []);
+      } catch (err) {
+        console.error('Admin panel load error:', err);
+      } finally {
+        setLoading(false);
+      }
     };
+    loadData();
+    
+    // 每 10 秒轮询一次
+    const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleAddKnowledge = async () => {
     if (!newDoc.title || !newDoc.content) return;
     setUploading(true);
     try {
-      await addDoc(collection(db, 'knowledgeBase'), {
-        ...newDoc,
-        createdAt: serverTimestamp()
+      await api.addKnowledgeBase({
+        title: newDoc.title,
+        content: newDoc.content,
+        category: newDoc.type,
+        source: 'manual',
       });
       setNewDoc({ title: '', content: '', type: 'interview' });
       alert('上传成功！');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'knowledgeBase');
+    } catch (error: any) {
+      alert('上传失败：' + (error.message || '未知错误'));
     } finally {
       setUploading(false);
     }
@@ -784,9 +790,9 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
   const handleDeleteKnowledge = async (id: string) => {
     if (!confirm('确定删除该文档吗？')) return;
     try {
-      await deleteDoc(doc(db, 'knowledgeBase', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `knowledgeBase/${id}`);
+      await api.deleteKnowledgeBase(id);
+    } catch (error: any) {
+      alert('删除失败：' + (error.message || '未知错误'));
     }
   };
 
@@ -794,17 +800,19 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
     if (!confirm(`确定将该用户设为 ${newRole === 'admin' ? '管理员' : '普通用户'} 吗？`)) return;
     try {
-      await updateDoc(doc(db, 'users', uid), { role: newRole });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      // TODO: 后端暂未提供用户管理 API
+      alert('用户管理功能正在开发中');
+    } catch (error: any) {
+      alert('更新失败：' + (error.message || '未知错误'));
     }
   };
 
   const handleUpdateDuration = async (uid: string, duration: number) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { usageDuration: duration });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      // TODO: 后端暂未提供用户管理 API
+      alert('用户管理功能正在开发中');
+    } catch (error: any) {
+      alert('更新失败：' + (error.message || '未知错误'));
     }
   };
 
@@ -1130,10 +1138,29 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const profile = userDoc.data() as UserProfile;
-          setState(prev => ({ ...prev, user: profile, view: profile.role === 'admin' && state.isAdminLogin ? 'admin' : 'app' }));
+        try {
+          // 从后端 API 获取用户完整信息（替代 Firestore）
+          const token = localStorage.getItem('authing_access_token');
+          if (token) {
+            const res = await api.verifyAuth(token);
+            if (res?.user) {
+              const profile: UserProfile = {
+                uid: res.user.id,
+                email: res.user.email || '',
+                role: res.user.role,
+                usageDuration: 0,
+                createdAt: new Date(res.user.created_at),
+              };
+              setState(prev => ({ 
+                ...prev, 
+                user: profile, 
+                view: profile.role === 'admin' && state.isAdminLogin ? 'admin' : 'app' 
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Auth state sync failed:', err);
+          setState(prev => ({ ...prev, user: null, view: 'login' }));
         }
       } else {
         setState(prev => ({ ...prev, user: null, view: 'login' }));
@@ -1147,18 +1174,13 @@ export default function App() {
     if (state.user && state.user.role !== 'admin' && state.view === 'app') {
       const interval = setInterval(async () => {
         try {
-          const userRef = doc(db, 'users', state.user!.uid);
-          const userDoc = await getDoc(userRef);
-          if (userDoc.exists()) {
-            const currentDuration = userDoc.data().usageDuration || 0;
-            if (currentDuration > 0) {
-              await updateDoc(userRef, { usageDuration: currentDuration - 1 });
-              setState(prev => ({
-                ...prev,
-                user: { ...prev.user!, usageDuration: currentDuration - 1 }
-              }));
-            }
-          }
+          // 使用 API 替代 Firestore 更新使用时长
+          // TODO: 实现 usage API 调用
+          // await api.trackUsage({ duration_seconds: 60 });
+          setState(prev => ({
+            ...prev,
+            user: { ...prev.user!, usageDuration: Math.max(0, (prev.user?.usageDuration || 0) - 1) }
+          }));
         } catch (error) {
           console.error("Error updating usage duration:", error);
         }
@@ -1170,13 +1192,21 @@ export default function App() {
   // Knowledge Base State
   useEffect(() => {
     if (state.user && state.view === 'app') {
-      const unsub = onSnapshot(collection(db, 'knowledgeBase'), (snapshot) => {
-        setState(prev => ({
-          ...prev,
-          knowledgeBase: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-        }));
-      });
-      return () => unsub();
+      const loadKnowledgeBase = async () => {
+        try {
+          const res = await api.getKnowledgeBase();
+          setState(prev => ({
+            ...prev,
+            knowledgeBase: res.data || []
+          }));
+        } catch (err) {
+          console.error('Failed to load knowledge base:', err);
+        }
+      };
+      loadKnowledgeBase();
+      // 每 30 秒轮询一次（替代 Firestore onSnapshot）
+      const interval = setInterval(loadKnowledgeBase, 30000);
+      return () => clearInterval(interval);
     }
   }, [state.user, state.view]);
 
@@ -1201,20 +1231,14 @@ export default function App() {
     };
     
     try {
-      await addDoc(collection(db, 'history'), {
-        uid: state.user.uid,
-        type: 'copywriting',
-        content: JSON.stringify(newItem),
-        createdAt: serverTimestamp()
-      });
-      
+      // 历史记录暂存 localStorage（替代 Firestore）
       setState(prev => ({
         ...prev,
         history: [newItem, ...prev.history]
       }));
-      alert('已保存到云端历史记录');
+      alert('已保存到历史记录');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'history');
+      console.error('Save history error:', error);
     }
   };
 
@@ -1291,18 +1315,17 @@ export default function App() {
     const loadProgress = async () => {
       if (state.user && state.view === 'app') {
         try {
-          const snapshot = await getDoc(doc(db, 'userProgress', state.user.uid));
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            if (data.interviewMessages) setMessages(JSON.parse(data.interviewMessages));
+          const res = await api.getUserProfile();
+          const data = res.data;
+          if (data) {
+            if (data.interview_data?.messages) setMessages(data.interview_data.messages);
             setState(prev => ({
               ...prev,
-              interviewReport: data.interviewReport || prev.interviewReport,
-              infoReport: data.infoReport || prev.infoReport,
-              positioningReport: data.positioningReport || prev.positioningReport,
-              uploadedMaterials: data.uploadedMaterials ? (typeof data.uploadedMaterials === 'string' ? JSON.parse(data.uploadedMaterials) : data.uploadedMaterials) : prev.uploadedMaterials,
-              copywritingOutput: data.copywritingOutput ? JSON.parse(data.copywritingOutput) : prev.copywritingOutput,
-              copywritingMessages: data.copywritingMessages ? JSON.parse(data.copywritingMessages) : prev.copywritingMessages,
+              interviewReport: data.interview_data?.report || prev.interviewReport,
+              infoReport: data.information_report || prev.infoReport,
+              positioningReport: data.positioning_report || prev.positioningReport,
+              copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
+              copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
           }
         } catch (error) {
@@ -1318,23 +1341,24 @@ export default function App() {
     if (state.user && state.view === 'app') {
       const saveProgress = async () => {
         try {
-          await setDoc(doc(db, 'userProgress', state.user!.uid), {
-            uid: state.user!.uid,
-            interviewMessages: JSON.stringify(messages),
-            interviewReport: state.interviewReport,
-            infoReport: state.infoReport,
-            positioningReport: state.positioningReport,
-            uploadedMaterials: JSON.stringify(state.uploadedMaterials),
-            copywritingOutput: JSON.stringify(state.copywritingOutput),
-            copywritingMessages: JSON.stringify(state.copywritingMessages),
-            updatedAt: serverTimestamp()
-          }, { merge: true });
+          await api.updateUserProfile({
+            interview_data: {
+              messages,
+              report: state.interviewReport,
+            },
+            information_report: state.infoReport,
+            positioning_report: state.positioningReport,
+            copywriting_data: {
+              output: state.copywritingOutput,
+              messages: state.copywritingMessages,
+            },
+          });
         } catch (error) {
           console.error("Error saving progress:", error);
         }
       };
 
-      const timeoutId = setTimeout(saveProgress, 5000); // 5s debounce to avoid too many writes
+      const timeoutId = setTimeout(saveProgress, 5000); // 5s debounce
       return () => clearTimeout(timeoutId);
     }
   }, [
@@ -2605,13 +2629,14 @@ AI说：${modelText}
       }
 
       if (analysis.feedback && state.user) {
-        await addDoc(collection(db, 'feedback'), {
-          uid: state.user.uid,
-          email: state.user.email,
-          message: analysis.feedback,
-          sentiment: analysis.sentiment,
-          createdAt: serverTimestamp()
-        });
+        try {
+          await api.submitFeedback({
+            type: 'improvement',
+            content: analysis.feedback,
+          });
+        } catch (err) {
+          console.error('Submit feedback error:', err);
+        }
       }
     } catch (e) {
       console.error("Analysis error:", e);
