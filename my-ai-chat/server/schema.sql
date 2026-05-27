@@ -6,7 +6,7 @@
 
 -- 1. 扩展安装
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS vector;
+-- CREATE EXTENSION IF NOT EXISTS vector;  -- Windows 需手动安装 pgvector，暂禁用
 
 -- 2. 用户表
 CREATE TABLE IF NOT EXISTS users (
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     file_type VARCHAR(50),
     file_path TEXT,
     file_size INT,
-    embedding VECTOR(1536),
+    embedding JSONB,                            -- 未来迁移为 VECTOR(1536)
     metadata JSONB DEFAULT '{}',
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),

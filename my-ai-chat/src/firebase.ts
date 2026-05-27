@@ -180,22 +180,33 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
 // ==================== Phone Code Login/Register (authing-js-sdk) ====================
 
 export async function sendPhoneCode(phone: string, scene: 'login' | 'register' = 'login') {
-  if (!authClient) throw new Error('Authing 未初始化');
+  console.log('[Auth] 开始发送验证码:', { phone, scene });
+  if (!authClient) {
+    console.error('[Auth] Authing 客户端未初始化');
+    throw new Error('Authing 未初始化');
+  }
   const sceneType = scene === 'register' ? SceneType.SCENE_TYPE_REGISTER : SceneType.SCENE_TYPE_LOGIN;
   try {
     const result = await authClient.sendSmsCode(phone, '+86', sceneType);
+    console.log('[Auth] 验证码发送成功:', { phone, result });
     return result;
   } catch (err: any) {
-    console.error('发送验证码失败:', err);
+    console.error('[Auth] 发送验证码失败:', { phone, error: err.message, code: err.code });
     throw new Error(err.message || '发送验证码失败');
   }
 }
 
 export async function loginByPhoneCode(phone: string, code: string) {
-  if (!authClient) throw new Error('Authing 未初始化');
+  console.log('[Auth] 开始手机号登录:', { phone, codeLength: code?.length });
+  if (!authClient) {
+    console.error('[Auth] Authing 客户端未初始化');
+    throw new Error('Authing 未初始化');
+  }
   try {
     // 先尝试登录
+    console.log('[Auth] 调用 loginByPhoneCode...');
     let authingUser = await authClient.loginByPhoneCode(phone, code, { phoneCountryCode: '+86' });
+    console.log('[Auth] loginByPhoneCode 返回:', { id: authingUser?.id, hasToken: !!authingUser?.token });
     const user: FirebaseUser = {
       uid: authingUser.id,
       email: authingUser.email || authingUser.phone || null,
@@ -208,13 +219,17 @@ export async function loginByPhoneCode(phone: string, code: string) {
     };
     // 保存 token 到 localStorage，供 API 客户端使用
     if (authingUser.token) {
+      console.log('[Auth] 保存 token 到 localStorage');
       localStorage.setItem('authing_access_token', authingUser.token);
+    } else {
+      console.warn('[Auth] 登录成功但未返回 token');
     }
     setCurrentUser(user);
+    console.log('[Auth] 登录成功，已设置当前用户:', { uid: user.uid, email: user.email });
     return user;
   } catch (err: any) {
     const msg = err.message || String(err);
-    console.error('[Authing] loginByPhoneCode failed:', err);
+    console.error('[Auth] loginByPhoneCode 失败:', { message: msg, code: err.code, raw: err });
 
     // 如果明确提示无权限，直接抛出配置提示
     if (msg.includes('无权限登录此应用') || msg.includes('1576')) {

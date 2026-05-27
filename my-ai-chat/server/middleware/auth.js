@@ -1,10 +1,23 @@
-import { AuthenticationClient } from 'authing-js-sdk';
 import { db } from '../db.js';
 
-const authClient = new AuthenticationClient({
-  appId: process.env.AUTHING_APP_ID,
-  appHost: process.env.AUTHING_APP_HOST,
-});
+/**
+ * 解析 JWT payload（base64url 解码）
+ * Authing 的 access token 是标准 JWT，payload 包含 sub, email, phone, name 等
+ */
+function parseJwtPayload(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    // base64url -> base64
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = Buffer.from(base64, 'base64').toString('utf-8');
+    return JSON.parse(json);
+  } catch (e) {
+    console.error('[Auth] JWT parse error:', e.message);
+    return null;
+  }
+}
 
 export async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -13,20 +26,27 @@ export async function authMiddleware(req, res, next) {
   }
 
   const token = authHeader.slice(7);
+  const payload = parseJwtPayload(token);
+
+  if (!payload) {
+    return res.status(401).json({ code: 1001, message: 'Token 格式无效', data: null });
+  }
+
+  // 检查 token 是否过期
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
+    return res.status(401).json({ code: 1001, message: 'Token 已过期', data: null });
+  }
 
   try {
-    // 验证 Authing Token 并获取用户信息
-    const authingUser = await authClient.getUserInfoByAccessToken(token);
-    
-    if (!authingUser || authingUser.code) {
-      return res.status(401).json({ code: 1001, message: 'Token 无效', data: null });
-    }
+    const authingId = payload.sub || payload.id;
+    const email = payload.email || null;
+    const phone = payload.phone || payload.phone_number || null;
+    const displayName = payload.name || payload.nickname || null;
+    const avatarUrl = payload.picture || payload.photo || null;
 
-    const authingId = authingUser.sub || authingUser.id;
-    const email = authingUser.email || null;
-    const phone = authingUser.phone || null;
-    const displayName = authingUser.name || authingUser.nickname || null;
-    const avatarUrl = authingUser.photo || null;
+    if (!authingId) {
+      return res.status(401).json({ code: 1001, message: 'Token 中缺少用户标识', data: null });
+    }
 
     // 查找或创建本地用户
     let result = await db.query('SELECT * FROM users WHERE authing_id = $1', [authingId]);
@@ -53,8 +73,10 @@ export async function authMiddleware(req, res, next) {
     }
 
     // 设置 PostgreSQL 会话变量（用于 RLS）
-    await db.query('SET app.current_user = $1', [user.id]);
-    await db.query('SET app.current_user_role = $2', [user.role]);
+    // 注意：SET 命令不支持参数化查询，需要字符串拼接
+    // 参数名必须用双引号包裹，因为 current_user 是 PostgreSQL 保留关键字
+    await db.query(`SET "app.current_user" = '${user.id}'`);
+    await db.query(`SET "app.current_user_role" = '${user.role}'`);
 
     req.user = user;
     req.isNewUser = isNewUser;

@@ -41,13 +41,16 @@ import {
   Clock,
   FileSearch,
   Trash2,
-  Plus
+  Plus,
+  FileDown,
+  Bug
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
 import * as api from './lib/api';
+import { exportLogs, clearLogs } from './lib/logger';
 import { 
   auth,
   onAuthStateChanged,
@@ -58,6 +61,7 @@ import {
   signOut,
   FirebaseUser
 } from './firebase';
+
 
 // --- Types ---
 
@@ -723,6 +727,16 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           </div>
         </div>
 
+        <button
+          onClick={() => {
+            const logs = exportLogs();
+            navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
+          }}
+          className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1 mt-2"
+        >
+          <Bug className="w-3 h-3" /> 导出调试日志
+        </button>
+
         <p className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">
           Powered by Gemini 3.1 Pro & Authing
         </p>
@@ -1112,6 +1126,7 @@ export default function App() {
   const [isStarted, setIsStarted] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('interview');
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
@@ -2893,6 +2908,13 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             联系专家
           </button>
           <button 
+            onClick={() => setShowLogs(true)}
+            className="p-2 text-gray-400 hover:text-amber-600 transition-colors"
+            title="导出调试日志"
+          >
+            <Bug className="w-5 h-5" />
+          </button>
+          <button 
             onClick={handleLogout}
             className="p-2 text-gray-400 hover:text-red-500 transition-colors"
             title="退出登录"
@@ -2912,6 +2934,13 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             className="p-2 bg-black rounded-lg"
           >
             <Phone className="w-5 h-5 text-white" />
+          </button>
+          <button 
+            onClick={() => setShowLogs(true)}
+            className="p-2 bg-gray-50 rounded-lg"
+            title="导出调试日志"
+          >
+            <Bug className="w-5 h-5 text-amber-500" />
           </button>
           <button 
             onClick={handleLogout}
@@ -3093,6 +3122,65 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
               <p className="mt-8 text-[10px] text-gray-400 uppercase tracking-[0.2em] font-medium">
                 Professional IP Strategy Support
               </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Debug Logs Modal */}
+      <AnimatePresence>
+        {showLogs && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <Bug className="w-5 h-5 text-amber-600" />
+                  <h2 className="text-lg font-bold">调试日志</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const logs = exportLogs();
+                      navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板'));
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors"
+                  >
+                    <FileDown className="w-3.5 h-3.5" /> 复制全部
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('确定清空所有日志？')) clearLogs();
+                    }}
+                    className="px-3 py-1.5 text-gray-400 hover:text-red-500 text-xs font-bold transition-colors"
+                  >
+                    清空
+                  </button>
+                  <button
+                    onClick={() => setShowLogs(false)}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-4 bg-gray-950">
+                <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-all">
+                  {exportLogs() || '// 暂无日志'}
+                </pre>
+              </div>
+              <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-[10px] text-gray-400">
+                提示：按 F12 打开浏览器开发者工具 → Console 标签，可以看到同样的日志输出。如果这里为空，说明日志拦截器未正确初始化。
+              </div>
             </motion.div>
           </motion.div>
         )}

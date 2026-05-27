@@ -1,6 +1,7 @@
 import { StrictMode, Component, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import './lib/logger.ts'; // 初始化全局日志拦截器
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: any) {
