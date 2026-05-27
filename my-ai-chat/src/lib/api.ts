@@ -215,3 +215,25 @@ export async function updateFeedbackStatus(id: string, data: { status: string; a
   });
   return res;
 }
+
+// ==================== Admin ====================
+export async function getAdminUsers() {
+  const res = await request<any>('/admin/users');
+  return res;
+}
+
+export async function updateUserQuota(id: string, data: { quota_minutes?: number; used_minutes?: number }) {
+  const res = await request<any>(`/admin/users/${id}/quota`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res;
+}
+
+export async function updateUserRole(id: string, data: { role: 'user' | 'admin' }) {
+  const res = await request<any>(`/admin/users/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res;
+}

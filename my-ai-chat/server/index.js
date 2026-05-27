@@ -19,6 +19,7 @@ import profileRoutes from './routes/profiles.js';
 import knowledgeBaseRoutes from './routes/knowledgeBase.js';
 import usageRoutes from './routes/usage.js';
 import feedbackRoutes from './routes/feedback.js';
+import adminRoutes from './routes/admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -45,6 +46,7 @@ app.use('/api/user/profile', authMiddleware, profileRoutes);
 app.use('/api/knowledge-base', authMiddleware, knowledgeBaseRoutes);
 app.use('/api/usage', authMiddleware, usageRoutes);
 app.use('/api/feedback', authMiddleware, feedbackRoutes);
+app.use('/api/admin', adminRoutes); // adminRoutes 内部已包含 authMiddleware + requireAdmin
 
 // Global error handler
 app.use(errorHandler);

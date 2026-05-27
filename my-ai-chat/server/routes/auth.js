@@ -18,6 +18,8 @@ router.post('/verify', authMiddleware, (req, res) => {
         display_name: req.user.display_name,
         avatar_url: req.user.avatar_url,
         role: req.user.role,
+        quota_minutes: req.user.quota_minutes,
+        used_minutes: req.user.used_minutes,
         created_at: req.user.created_at,
       },
       isNewUser: req.isNewUser,
@@ -38,6 +40,8 @@ router.get('/me', authMiddleware, (req, res) => {
       display_name: req.user.display_name,
       avatar_url: req.user.avatar_url,
       role: req.user.role,
+      quota_minutes: req.user.quota_minutes,
+      used_minutes: req.user.used_minutes,
       created_at: req.user.created_at,
     },
   });

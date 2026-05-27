@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(255),
     avatar_url TEXT,
     role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    quota_minutes INT DEFAULT 60,
+    used_minutes INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -72,8 +72,10 @@ type View = 'login' | 'app' | 'admin';
 interface UserProfile {
   uid: string;
   email: string;
+  phone: string | null;
   role: 'user' | 'admin';
-  usageDuration: number;
+  quotaMinutes: number;
+  usedMinutes: number;
   createdAt: any;
 }
 
@@ -750,7 +752,8 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
 
 function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<'users' | 'feedback' | 'knowledge'>('users');
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [phoneSearch, setPhoneSearch] = useState('');
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
   const [knowledge, setKnowledge] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -761,9 +764,9 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
     const loadData = async () => {
       setLoading(true);
       try {
-        // 加载用户列表（后端暂不提供此接口，用空数组占位）
-        // TODO: 添加 /api/admin/users 接口
-        setUsers([]);
+        // 加载用户列表
+        const usersRes = await api.getAdminUsers();
+        setUsers(usersRes.data || []);
         
         // 加载反馈列表
         const fbRes = await api.getFeedback({ pageSize: 100 });
@@ -817,17 +820,35 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
     if (!confirm(`确定将该用户设为 ${newRole === 'admin' ? '管理员' : '普通用户'} 吗？`)) return;
     try {
-      // TODO: 后端暂未提供用户管理 API
-      alert('用户管理功能正在开发中');
+      await api.updateUserRole(uid, { role: newRole as 'user' | 'admin' });
+      alert('角色更新成功');
+      // 刷新列表
+      const usersRes = await api.getAdminUsers();
+      setUsers(usersRes.data || []);
     } catch (error: any) {
       alert('更新失败：' + (error.message || '未知错误'));
     }
   };
 
-  const handleUpdateDuration = async (uid: string, duration: number) => {
+  const handleUpdateQuota = async (uid: string, quota: number) => {
     try {
-      // TODO: 后端暂未提供用户管理 API
-      alert('用户管理功能正在开发中');
+      await api.updateUserQuota(uid, { quota_minutes: quota });
+      console.log('[Admin] 配额更新成功:', { uid, quota });
+      // 刷新列表
+      const usersRes = await api.getAdminUsers();
+      setUsers(usersRes.data || []);
+    } catch (error: any) {
+      alert('更新失败：' + (error.message || '未知错误'));
+    }
+  };
+
+  const handleResetUsed = async (uid: string) => {
+    if (!confirm('确定重置该用户的已用时长为 0 吗？')) return;
+    try {
+      await api.updateUserQuota(uid, { used_minutes: 0 });
+      alert('已用时长已重置');
+      const usersRes = await api.getAdminUsers();
+      setUsers(usersRes.data || []);
     } catch (error: any) {
       alert('更新失败：' + (error.message || '未知错误'));
     }
@@ -954,55 +975,134 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
         </header>
 
         {activeTab === 'users' && (
-          <div className="bg-white rounded-[32px] border border-gray-100 overflow-hidden shadow-sm">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">用户邮箱</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">角色</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">使用时长 (分)</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">注册时间</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {users.map((u) => (
-                  <tr key={u.uid} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-sm">{u.email}</td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        u.role === 'admin' ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
-                      )}>
-                        {u.role === 'admin' ? '管理员' : '普通用户'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number" 
-                          defaultValue={u.usageDuration || 0}
-                          onBlur={(e) => handleUpdateDuration(u.uid, parseInt(e.target.value) || 0)}
-                          className="w-20 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-black"
-                        />
-                        <span className="text-[10px] text-gray-400 font-bold">分钟</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-500">
-                      {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleString() : '未知'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <button 
-                        onClick={() => handleUpdateRole(u.uid, u.role)}
-                        className="text-xs font-bold text-black hover:underline"
-                      >
-                        切换角色
-                      </button>
-                    </td>
+          <div className="space-y-6">
+            {/* 手机号搜索 */}
+            <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">按手机号搜索用户</label>
+                  <input
+                    type="text"
+                    value={phoneSearch}
+                    onChange={(e) => setPhoneSearch(e.target.value)}
+                    placeholder="输入手机号查找..."
+                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div className="pt-5">
+                  <button
+                    onClick={() => setPhoneSearch('')}
+                    className="px-4 py-3 text-xs font-bold text-gray-400 hover:text-black transition-colors"
+                  >
+                    清除
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 用户列表 */}
+            <div className="bg-white rounded-[32px] border border-gray-100 overflow-hidden shadow-sm">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">用户</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">角色</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">总配额 (分)</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">已用 / 剩余</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">注册时间</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {users
+                    .filter((u) => {
+                      if (!phoneSearch) return true;
+                      const search = phoneSearch.trim();
+                      return (u.phone || '').includes(search) || (u.email || '').includes(search);
+                    })
+                    .map((u) => {
+                      const remaining = (u.quota_minutes || 0) - (u.used_minutes || 0);
+                      const isDepleted = remaining <= 0;
+                      return (
+                        <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="space-y-0.5">
+                              <p className="font-bold text-sm">{u.email || '—'}</p>
+                              <p className="text-[10px] text-gray-400 font-mono">{u.phone || '无手机号'}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                              u.role === 'admin' ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                            )}>
+                              {u.role === 'admin' ? '管理员' : '普通用户'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                defaultValue={u.quota_minutes || 0}
+                                onBlur={(e) => handleUpdateQuota(u.id, parseInt(e.target.value) || 0)}
+                                className="w-20 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-black"
+                              />
+                              <span className="text-[10px] text-gray-400 font-bold">分钟</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-mono font-bold">{u.used_minutes || 0}</span>
+                                <span className="text-gray-300">/</span>
+                                <span className={cn("font-mono font-bold", isDepleted ? "text-red-500" : "text-green-600")}>
+                                  {remaining}
+                                </span>
+                              </div>
+                              {/* 进度条 */}
+                              <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={cn("h-full rounded-full", isDepleted ? "bg-red-400" : "bg-green-400")}
+                                  style={{ width: `${Math.min(100, ((u.quota_minutes || 1) > 0 ? (u.used_minutes || 0) / u.quota_minutes : 0) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-500">
+                            {u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '未知'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => handleUpdateRole(u.id, u.role)}
+                                className="text-[10px] font-bold text-black hover:underline"
+                              >
+                                切换角色
+                              </button>
+                              <button
+                                onClick={() => handleResetUsed(u.id)}
+                                className="text-[10px] font-bold text-gray-400 hover:text-green-600 transition-colors"
+                              >
+                                重置已用
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+              {users.filter((u) => {
+                if (!phoneSearch) return true;
+                const search = phoneSearch.trim();
+                return (u.phone || '').includes(search) || (u.email || '').includes(search);
+              }).length === 0 && (
+                <div className="p-10 text-center text-gray-400 text-sm">
+                  暂无用户数据
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1165,8 +1265,10 @@ export default function App() {
               const profile: UserProfile = {
                 uid: res.user.id,
                 email: res.user.email || '',
+                phone: res.user.phone || null,
                 role: res.user.role,
-                usageDuration: 0,
+                quotaMinutes: res.user.quota_minutes ?? 60,
+                usedMinutes: res.user.used_minutes ?? 0,
                 createdAt: new Date(res.user.created_at),
               };
               setState(prev => ({ 
@@ -1192,13 +1294,16 @@ export default function App() {
     if (state.user && state.user.role !== 'admin' && state.view === 'app') {
       const interval = setInterval(async () => {
         try {
-          // 使用 API 替代 Firestore 更新使用时长
-          // TODO: 实现 usage API 调用
-          // await api.trackUsage({ duration_seconds: 60 });
-          setState(prev => ({
-            ...prev,
-            user: { ...prev.user!, usageDuration: Math.max(0, (prev.user?.usageDuration || 0) - 1) }
-          }));
+          // 每分钟扣减已用额度（前端本地扣减，实际持久化由后端处理）
+          // TODO: 后端实现自动扣减或定时同步
+          setState(prev => {
+            if (!prev.user) return prev;
+            const newUsed = (prev.user.usedMinutes || 0) + 1;
+            return {
+              ...prev,
+              user: { ...prev.user, usedMinutes: newUsed }
+            };
+          });
         } catch (error) {
           console.error("Error updating usage duration:", error);
         }
@@ -1541,7 +1646,8 @@ export default function App() {
 
   const renderStep = () => {
     // Usage Restriction Check
-    if (state.user && state.user.role !== 'admin' && (state.user.usageDuration || 0) <= 0) {
+    const remainingMinutes = (state.user?.quotaMinutes || 0) - (state.user?.usedMinutes || 0);
+    if (state.user && state.user.role !== 'admin' && remainingMinutes <= 0) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
           <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center">
