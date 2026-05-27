@@ -51,6 +51,7 @@ import { cn } from './lib/utils';
 import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
 import * as api from './lib/api';
 import { exportLogs, clearLogs } from './lib/logger';
+import { DEBUG_MODE } from './lib/debug';
 import { 
   auth,
   onAuthStateChanged,
@@ -727,15 +728,17 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            const logs = exportLogs();
-            navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
-          }}
-          className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1 mt-2"
-        >
-          <Bug className="w-3 h-3" /> 导出调试日志
-        </button>
+        {DEBUG_MODE && (
+          <button
+            onClick={() => {
+              const logs = exportLogs();
+              navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
+            }}
+            className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1 mt-2"
+          >
+            <Bug className="w-3 h-3" /> 导出调试日志
+          </button>
+        )}
 
         <p className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">
           Powered by Gemini 3.1 Pro & Authing
@@ -2907,14 +2910,16 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           >
             联系专家
           </button>
-          <button 
-            onClick={() => setShowLogs(true)}
-            className="p-2 text-gray-400 hover:text-amber-600 transition-colors"
-            title="导出调试日志"
-          >
-            <Bug className="w-5 h-5" />
-          </button>
-          <button 
+          {DEBUG_MODE && (
+            <button
+              onClick={() => setShowLogs(true)}
+              className="p-2 text-gray-400 hover:text-amber-600 transition-colors"
+              title="导出调试日志"
+            >
+              <Bug className="w-5 h-5" />
+            </button>
+          )}
+          <button
             onClick={handleLogout}
             className="p-2 text-gray-400 hover:text-red-500 transition-colors"
             title="退出登录"
@@ -2935,14 +2940,16 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           >
             <Phone className="w-5 h-5 text-white" />
           </button>
-          <button 
-            onClick={() => setShowLogs(true)}
-            className="p-2 bg-gray-50 rounded-lg"
-            title="导出调试日志"
-          >
-            <Bug className="w-5 h-5 text-amber-500" />
-          </button>
-          <button 
+          {DEBUG_MODE && (
+            <button
+              onClick={() => setShowLogs(true)}
+              className="p-2 bg-gray-50 rounded-lg"
+              title="导出调试日志"
+            >
+              <Bug className="w-5 h-5 text-amber-500" />
+            </button>
+          )}
+          <button
             onClick={handleLogout}
             className="p-2 bg-gray-50 rounded-lg"
           >
