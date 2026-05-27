@@ -583,8 +583,8 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          // fallback: 根据 email 判断
-          if (user.email === 'janeeric879@gmail.com') role = 'admin';
+          // fallback: 根据手机号判断管理员
+          if (user.email === '17388978910') role = 'admin';
         }
       }
 
@@ -621,7 +621,8 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          if (user.email === 'janeeric879@gmail.com') role = 'admin';
+          // fallback: 根据手机号判断管理员
+          if (user.email === '17388978910') role = 'admin';
         }
       }
 

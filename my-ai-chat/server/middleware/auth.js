@@ -55,7 +55,8 @@ export async function authMiddleware(req, res, next) {
 
     if (!user) {
       // 自动创建新用户
-      const role = email === 'janeeric879@gmail.com' ? 'admin' : 'user';
+      // 管理员标识：手机号 17388978910
+      const role = phone === '17388978910' ? 'admin' : 'user';
       result = await db.query(
         `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role)
          VALUES ($1, $2, $3, $4, $5, $6)

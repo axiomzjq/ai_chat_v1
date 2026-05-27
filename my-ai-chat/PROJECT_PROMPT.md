@@ -147,7 +147,7 @@ my-ai-chat/
 
 - **手机号验证码登录/注册**（authing-js-sdk）
 - **Google OAuth 登录**（@authing/web）
-- **管理员后台**（基于 email 白名单判断 role=admin）
+- **管理员后台**（基于手机号白名单判断 role=admin，管理员：17388978910）
 - **Token 机制**：Authing ID Token → localStorage → 后端 JWT 解析
 
 ### 3. 数据持久化
