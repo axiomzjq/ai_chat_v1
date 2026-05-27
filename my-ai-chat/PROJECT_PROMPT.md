@@ -1,66 +1,57 @@
-# my-ai-chat 项目提示词
+# my-ai-chat 项目架构总览
 
-## 项目概述
-
-**my-ai-chat** 是基于 `elitefounder-ai` 完整移植的 **ToB 创始人 IP 深度定制系统**。以参考项目的所有页面和样式为最高优先级，完整保留了其 3100 行单文件组件架构、四步工作流、多 Agent 协作、Firebase 认证与数据持久化、知识库 RAG 等全部功能。
-
-在此基础上，项目扩展了独立的 **RAG 后端服务骨架** 和 **AI 知识库（ai-database）**，用于持续迭代和演进。
+> 最后更新：2026-05-27
+> 仓库：https://github.com/axiomzjq/ai_chat_v1
 
 ---
 
-## 核心功能
+## 项目定位
 
-### 1. 四步深度定制工作流（来自 elitefounder-ai）
-| 步骤 | Agent | 职责 | 解锁条件 |
-|------|-------|------|---------|
-| **访谈** | 访谈顾问 | 深度挖掘创始人故事（basic → deep 两阶段） | 始终可用 |
-| **信息** | 信息顾问 | 企业与行业分析报告 | 完成访谈报告 |
-| **定位** | 定位顾问 | 输出 3 版 IP 定位方案 | 完成信息报告 |
-| **文案** | 文案顾问 | 短视频口播文案创作（JSON 输出） | 完成定位报告 |
-| **历史** | — | 查看云端存档记录 | 始终可用 |
-
-### 2. 认证与权限
-- 邮箱/密码注册登录
-- Google 账号登录
-- 管理员后台（用户管理、反馈查看、知识库训练）
-- 使用时长限制机制
-
-### 3. 知识库 RAG
-- 管理员上传语料（txt/md/docx/xlsx）
-- AI 自动整理语料
-- 按 Agent 类型过滤注入（interview/ip/copywriting）
-- 前端全量拼接注入（简单 RAG）
-
-### 4. 交互增强
-- Markdown 渲染 + 折叠分节
-- 语音输入（Web Speech API）
-- TTS 朗读（Gemini 音频生成）
-- 文件解析（Excel/Word/Text）
-- 报告下载（Markdown/Word）
-- 剪贴板复制
-
-### 5. 扩展骨架（RAG 后端）
-- `server/` — Node.js + Express 后端服务（预留）
-- `knowledge-base/` — 原始文档存储
-- `docs/rag/` — RAG 架构文档
-- `ai-database/` — 从 elitefounder-ai 提取的知识库
+**ToB 创始人 IP 深度定制系统**，基于 `elitefounder-ai` 完整移植 UI，底层替换为：
+- **认证**：Authing（手机号验证码 / Google OAuth）
+- **数据库**：本地 PostgreSQL（替代 Firestore）
+- **后端**：Node.js + Express REST API（替代 Firebase 后端）
+- **AI**：Google Gemini API
 
 ---
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 |
+### 前端
+
+| 技术 | 版本 | 用途 |
 |------|------|------|
-| 框架 | React + TypeScript | ^19.0.0 / ~5.8.2 |
-| 构建 | Vite | ^6.2.0 |
-| 样式 | Tailwind CSS v4 | ^4.1.14 |
-| AI SDK | @google/genai | ^1.29.0 |
-| 后端 | Firebase (Auth + Firestore) | ^12.11.0 |
-| 动画 | motion (Framer Motion) | ^12.23.24 |
-| 图标 | lucide-react | ^0.546.0 |
-| Markdown | react-markdown | ^10.1.0 |
-| 文件解析 | mammoth + xlsx | ^1.12.0 + ^0.18.5 |
-| 导出 | html2canvas + jspdf | ^1.4.1 + ^4.2.1 |
+| React | ^19.0.0 | UI 框架 |
+| TypeScript | ~5.8.2 | 类型系统 |
+| Vite | ^6.2.0 | 构建工具 |
+| Tailwind CSS | ^4.1.14 | 样式（通过 `@tailwindcss/vite` 插件） |
+| @google/genai | ^1.29.0 | Gemini AI SDK |
+| @authing/web | ^5.1.21 | Authing OAuth 登录 |
+| authing-js-sdk | ^5.1.21 | 手机号验证码登录/注册 |
+| motion | ^12.23.24 | 动画（Framer Motion） |
+| lucide-react | ^0.546.0 | 图标 |
+| react-markdown | ^10.1.0 | Markdown 渲染 |
+| mammoth + xlsx | ^1.12.0 + ^0.18.5 | 文件解析（Word/Excel） |
+
+### 后端
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Node.js | v24.15.0 | 运行环境 |
+| Express | ^4.x | Web 框架 |
+| pg | ^8.x | PostgreSQL 驱动 |
+| dotenv | ^16.x | 环境变量 |
+| cors | ^2.x | 跨域 |
+| multer | ^1.x | 文件上传 |
+
+### 数据库
+
+| 组件 | 版本 | 用途 |
+|------|------|------|
+| PostgreSQL | 18 | 关系型数据库 |
+| 数据库名 | `aichat` | — |
+| 用户名 | `aiuser` | — |
+| 表数量 | 7 张 | 见 `docs/database-schema.md` |
 
 ---
 
@@ -68,90 +59,176 @@
 
 ```
 my-ai-chat/
-├── ai-database/              # AI 知识库（从 elitefounder-ai 提取的架构/样式/模式/提示词）
+│
+├── src/                          # 前端源码
+│   ├── App.tsx                   # 主组件（~3100行，含全部业务逻辑）
+│   ├── main.tsx                  # 入口文件（初始化 logger、渲染 App）
+│   ├── firebase.ts               # Authing 认证适配层（替代 Firebase Auth）
+│   ├── index.css                 # Tailwind 入口 + 自定义样式
+│   ├── hooks/useAuthing.ts       # Authing Hook（预留）
+│   ├── lib/
+│   │   ├── api.ts                # 前端 API 客户端（封装所有后端 REST 调用）
+│   │   ├── authing.ts            # Authing 常量配置
+│   │   ├── debug.ts              # ⭐ 调试模式开关（DEBUG_MODE）
+│   │   ├── logger.ts             # 全局日志拦截器（受 debug.ts 控制）
+│   │   └── utils.ts              # cn() 工具函数
+│   └── assets/                   # 静态资源
+│
+├── server/                       # 后端服务
+│   ├── index.js                  # Express 应用入口
+│   ├── db.js                     # PostgreSQL 连接池
+│   ├── .env                      # 后端环境变量（不提交 git）
+│   ├── .env.example              # 环境变量模板
+│   ├── schema.sql                # 数据库 Schema（7 张表 + 索引 + RLS）
+│   ├── fix-kb.sql                # 知识库表修复脚本
+│   ├── config/rag.js             # RAG 配置（预留）
+│   ├── middleware/
+│   │   ├── auth.js               # JWT 认证中间件（解析 Authing ID Token）
+│   │   ├── errorHandler.js       # 全局错误处理
+│   │   └── rateLimit.js          # 限流中间件（预留）
+│   └── routes/
+│       ├── auth.js               # /api/auth/*（verify, me）
+│       ├── conversations.js      # /api/conversations/*（对话 CRUD）
+│       ├── messages.js           # /api/conversations/:id/messages/*
+│       ├── profiles.js           # /api/user/profile/*（用户画像）
+│       ├── knowledgeBase.js      # /api/kb/*（知识库）
+│       ├── usage.js              # /api/usage/*（使用统计）
+│       └── feedback.js           # /api/feedback/*（反馈）
+│
+├── docs/                         # 知识库文档
+│   ├── api-specification.md      # REST API 规范
+│   ├── database-schema.md        # 数据库 Schema 文档
+│   ├── postgresql-migration-plan.md  # Firestore → PostgreSQL 迁移计划
+│   ├── postgresql-setup.md       # PostgreSQL 安装配置指南
+│   ├── authing-phone-login.md    # Authing 手机号登录集成文档
+│   ├── debug-mode.md             # 调试模式使用文档
+│   └── rag/
+│       └── ARCHITECTURE.md       # RAG 系统架构（预留）
+│
+├── knowledge-base/               # 知识库文件存储（预留）
+│   ├── raw/                      # 原始文档
+│   ├── processed/                # 清洗后文本（gitignored）
+│   └── embeddings/               # 向量索引（gitignored）
+│
+├── ai-database/                  # 从 elitefounder-ai 提取的知识库
 │   ├── architecture-analysis.md
 │   ├── style-guide.md
 │   ├── component-patterns.md
 │   ├── tech-stack.md
 │   └── prompts-collection.md
 │
-├── docs/rag/
-│   └── ARCHITECTURE.md       # RAG 系统架构文档
-│
-├── knowledge-base/           # 知识库文件存储
-│   ├── raw/                  # 原始文档
-│   ├── processed/            # 清洗后文本（gitignored）
-│   └── embeddings/           # 向量索引（gitignored）
-│
-├── server/                   # Node.js 后端服务骨架
-│   ├── index.js
-│   ├── package.json
-│   ├── config/rag.js
-│   ├── middleware/errorHandler.js
-│   └── routes/services/models/utils/（.gitkeep）
-│
-├── scripts/
-│   └── build-index.js        # 批量构建索引脚本
-│
-├── src/                      # 前端源码（完整移植自 elitefounder-ai）
-│   ├── App.tsx               # 主组件（3100行，含全部业务逻辑）
-│   ├── firebase.ts           # Firebase 初始化与封装
-│   ├── main.tsx              # 入口文件
-│   ├── index.css             # Tailwind 入口 + 自定义样式
-│   ├── lib/
-│   │   └── utils.ts          # cn() 工具函数
-│   └── assets/               # 静态资源
-│
-├── firebase-applet-config.json   # Firebase 配置
-├── tsconfig.json
-├── vite.config.ts
-├── index.html
-├── package.json
-└── PROJECT_PROMPT.md         # 本文件
+├── firebase-applet-config.json   # Firebase 配置（前端保留，用于降级兼容）
+├── package.json                  # 前端依赖
+├── vite.config.ts                # Vite 配置
+├── tsconfig.json                 # TypeScript 配置
+├── index.html                    # 页面骨架
+├── .env.local                    # 前端环境变量（GEMINI_API_KEY）
+├── .gitignore
+├── README.md
+├── AGENTS.md                     # AI Agent 工作规则
+└── PROJECT_PROMPT.md             # 本文件（项目架构总览）
 ```
 
 ---
 
-## 当前进度
+## 核心功能
 
-### ✅ 已完成
-- [x] 深度阅读 elitefounder-ai 全部源码（3100 行 App.tsx + 配置文件）
-- [x] 提取并建立 ai-database 知识库（5 份核心文档）
-- [x] 完整移植 elitefounder-ai 前端代码到 my-ai-chat/src/（TypeScript 源码直接复制）
-- [x] 移植配置文件（vite.config.ts, tsconfig.json, firebase-applet-config.json, index.html）
-- [x] 更新 package.json 包含全部依赖并安装
-- [x] 清理旧的通用 AI Chat 组件代码
-- [x] 保留 RAG 后端骨架（server/、docs/、knowledge-base/、scripts/）
-- [x] 运行验证成功（npm run dev → localhost:5179，登录页正常显示）
-- [x] 推送至 GitHub（axiomzjq/ai_chat_v1）
-- [x] 修复 Vite 与 Tailwind CSS 版本兼容性（锁定 vite@6.2.0 + tailwindcss@4.1.14）
-- [x] 添加 Firebase 初始化保护（try-catch + mock 降级）
-- [x] 添加 RootErrorBoundary 根级错误边界
-- [x] 提供 GEMINI_API_KEY 占位符（使 UI 在无真实 key 时仍可挂载）
+### 1. 四步深度定制工作流
 
-### ⏳ 待完成
-- [ ] 替换为真实 Gemini API Key（当前为占位符，AI 功能返回 401）
-- [ ] 后端 RAG 服务开发（server/ 当前为骨架，需实现文档解析、分块、向量化、检索）
-- [ ] 部署上线（Vercel / Firebase Hosting）
+| 步骤 | Agent | 职责 | 解锁条件 |
+|------|-------|------|---------|
+| **访谈** | 访谈顾问 | 深度挖掘创始人故事（basic → deep） | 始终可用 |
+| **信息** | 信息顾问 | 企业与行业分析报告 | 完成访谈报告 |
+| **定位** | 定位顾问 | 输出 3 版 IP 定位方案 | 完成信息报告 |
+| **文案** | 文案顾问 | 短视频口播文案创作（JSON 输出） | 完成定位报告 |
+| **历史** | — | 查看云端存档记录 | 始终可用 |
+
+### 2. 认证系统
+
+- **手机号验证码登录/注册**（authing-js-sdk）
+- **Google OAuth 登录**（@authing/web）
+- **管理员后台**（基于 email 白名单判断 role=admin）
+- **Token 机制**：Authing ID Token → localStorage → 后端 JWT 解析
+
+### 3. 数据持久化
+
+PostgreSQL 7 张表：
+
+| 表名 | 用途 |
+|------|------|
+| `users` | 用户主表（authing_id, email, phone, role） |
+| `conversations` | 对话记录 |
+| `messages` | 消息记录 |
+| `user_profiles` | 用户画像（访谈/信息/定位报告缓存） |
+| `knowledge_base` | 知识库文档（embedding 暂用 JSONB） |
+| `usage_stats` | 使用统计 |
+| `feedback` | 用户反馈 |
+
+### 4. 调试系统
+
+- 全局日志拦截器：`console.log/error/warn` + `fetch` + `XHR` + 未捕获异常
+- 一键导出日志（复制到剪贴板）
+- 日志弹窗（黑底绿字终端风格）
+- **单一开关控制**：`src/lib/debug.ts` 中 `DEBUG_MODE = true/false`
 
 ---
 
-## 启动方式
+## 开发环境
 
+### 启动方式
+
+**前端（终端 1）：**
 ```bash
 cd my-ai-chat
 npm install
 npm run dev
-# 浏览器打开 http://localhost:5173
+# http://localhost:5173
 ```
 
-## 环境变量
+**后端（终端 2）：**
+```bash
+cd my-ai-chat/server
+npm install
+node index.js
+# http://localhost:3001
+```
 
-项目根目录创建 `.env.local`：
+### 环境变量
+
+**前端 `.env.local`：**
 ```env
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+**后端 `server/.env`：**
+```env
+PORT=3001
+NODE_ENV=development
+DATABASE_URL=postgresql://aiuser:password@localhost:5432/aichat
+AUTHING_APP_ID=your_app_id
+AUTHING_APP_HOST=https://your-app.authing.cn
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ---
 
-> **设计基准**：所有页面样式严格遵循 elitefounder-ai 的极简黑白灰设计语言——大圆角（rounded-2xl/3xl）、细边框（border-gray-100）、轻阴影（shadow-xl）、精致标签文字（text-[10px] uppercase tracking-widest）。
+## 关键决策记录
+
+| 时间 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-22 | 从 Firebase 迁移到 Authing + PostgreSQL | 开发者在中国大陆，Firebase 被墙 |
+| 2026-05-22 | 双 SDK 方案（@authing/web + authing-js-sdk） | OAuth 弹窗 + 手机号验证码各需不同 SDK |
+| 2026-05-23 | embedding 列从 VECTOR(1536) 降级为 JSONB | 本地 PostgreSQL 未安装 pgvector 扩展 |
+| 2026-05-25 | 后端 JWT 改为直接解析 payload | authing-js-sdk 的 `getUserInfoByAccessToken` 在实例无 token 时无法调用 |
+| 2026-05-27 | 引入 DEBUG_MODE 配置化 | 调试入口需可一键移除，避免上线后 UI 污染 |
+
+---
+
+## 已知问题
+
+| 问题 | 状态 | 说明 |
+|------|------|------|
+| pgvector 未安装 | 🔶 待升级 | 知识库语义搜索暂不可用（embedding 为 JSONB） |
+| SSE 消息流 | 🔶 预留 | `/api/conversations/:id/messages/stream` 已预留，未实现 |
+| 前端轮询知识库 | 🔶 可优化 | 当前每 30 秒轮询，可改为 WebSocket/SSE |
+| 后端 RAG 服务 | 🔶 预留 | `server/config/rag.js` 和 `services/` 为骨架 |
