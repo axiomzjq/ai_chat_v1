@@ -1573,6 +1573,7 @@ ${relevantKnowledge}`,
   const [isListening, setIsListening] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -1583,21 +1584,26 @@ ${relevantKnowledge}`,
       recognitionRef.current.lang = 'zh-CN';
 
       recognitionRef.current.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        let interimTranscript = '';
+        let latestFinal = '';
+        for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
-            finalTranscript += result[0].transcript;
+            latestFinal += result[0].transcript;
+          } else {
+            interimTranscript += result[0].transcript;
           }
         }
-        if (finalTranscript) {
-          if (currentStep === 'interview') {
-            setInput(prev => prev + finalTranscript);
-          } else if (currentStep === 'information') {
-            setCompanyInfo(prev => prev + finalTranscript);
-          } else if (currentStep === 'positioning') {
-            setPositioningFeedback(prev => prev + finalTranscript);
-          }
+        if (latestFinal) {
+          finalTranscriptRef.current += latestFinal;
+        }
+        const displayText = finalTranscriptRef.current + interimTranscript;
+        if (currentStep === 'interview') {
+          setInput(displayText);
+        } else if (currentStep === 'information') {
+          setCompanyInfo(displayText);
+        } else if (currentStep === 'positioning') {
+          setPositioningFeedback(displayText);
         }
       };
 
@@ -1617,6 +1623,7 @@ ${relevantKnowledge}`,
       recognitionRef.current?.stop();
     } else {
       try {
+        finalTranscriptRef.current = '';
         recognitionRef.current?.start();
         setIsListening(true);
       } catch (error) {
