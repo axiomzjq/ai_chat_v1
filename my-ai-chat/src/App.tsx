@@ -487,10 +487,11 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-function Login({ onLogin, isAdmin, setIsAdmin }: { 
+function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: { 
   onLogin: (user: FirebaseUser, role: 'user' | 'admin') => void,
   isAdmin: boolean,
-  setIsAdmin: (val: boolean) => void
+  setIsAdmin: (val: boolean) => void,
+  onDebugLogin?: () => void
 }) {
   const [loading, setLoading] = useState(false);
   const [phone, setPhone] = useState('');
@@ -688,15 +689,23 @@ function Login({ onLogin, isAdmin, setIsAdmin }: {
         </div>
 
         {DEBUG_MODE && (
-          <button
-            onClick={() => {
-              const logs = exportLogs();
-              navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
-            }}
-            className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1 mt-2"
-          >
-            <Bug className="w-3 h-3" /> 导出调试日志
-          </button>
+          <div className="flex flex-col gap-2 mt-2">
+            <button
+              onClick={() => {
+                const logs = exportLogs();
+                navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
+              }}
+              className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1"
+            >
+              <Bug className="w-3 h-3" /> 导出调试日志
+            </button>
+            <button
+              onClick={onDebugLogin}
+              className="text-[10px] text-red-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1 font-bold"
+            >
+              🛠️ 调试：管理员一键登录 (17388978910)
+            </button>
+          </div>
         )}
 
         <p className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">
@@ -1297,6 +1306,30 @@ export default function App() {
     } catch (error) {
       console.error("Logout error:", error);
     }
+  };
+
+  const resetAllData = () => {
+    if (!window.confirm('确定要清空所有用户数据吗？\n\n这将删除：\n- 所有访谈对话记录\n- 访谈报告、背景报告、定位方案\n- 文案创作内容\n- 上传的参考资料\n- 历史记录\n\n此操作不可恢复。')) return;
+    setMessages([{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
+    setInput('');
+    setCompanyInfo('');
+    setCurrentStep('interview');
+    setState(prev => ({
+      ...prev,
+      interviewPhase: 'basic',
+      interviewReport: '',
+      infoReport: '',
+      positioningOptions: [],
+      selectedPositioningIndex: null,
+      positioningReport: '',
+      copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
+      copywritingMessages: [],
+      isCopywritingChatMode: false,
+      history: [],
+      uploadedMaterials: [],
+    }));
+    localStorage.removeItem('founder_ip_history');
+    alert('✅ 所有数据已清空，重新开始。');
   };
 
   const addToHistory = async () => {
@@ -2852,6 +2885,23 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
         onLogin={(user, role) => {
           // Handled by onAuthStateChanged
         }}
+        onDebugLogin={() => {
+          const mockUser: UserProfile = {
+            uid: 'debug-admin-17388978910',
+            email: '17388978910',
+            phone: '17388978910',
+            role: 'admin',
+            quotaMinutes: 9999,
+            usedMinutes: 0,
+            createdAt: new Date(),
+          };
+          setState(prev => ({
+            ...prev,
+            user: mockUser,
+            view: 'app',
+            isAdminLogin: false,
+          }));
+        }}
       />
     );
   }
@@ -2980,13 +3030,22 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             联系专家
           </button>
           {DEBUG_MODE && (
-            <button
-              onClick={() => setShowLogs(true)}
-              className="p-2 text-gray-400 hover:text-amber-600 transition-colors"
-              title="导出调试日志"
-            >
-              <Bug className="w-5 h-5" />
-            </button>
+            <>
+              <button
+                onClick={() => setShowLogs(true)}
+                className="p-2 text-gray-400 hover:text-amber-600 transition-colors"
+                title="导出调试日志"
+              >
+                <Bug className="w-5 h-5" />
+              </button>
+              <button
+                onClick={resetAllData}
+                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                title="一键还原：清空所有用户数据"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </>
           )}
           <button
             onClick={handleLogout}
