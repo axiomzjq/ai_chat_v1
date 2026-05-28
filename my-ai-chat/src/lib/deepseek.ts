@@ -16,7 +16,7 @@ if (!API_KEY) {
 
 // 模型映射：把内部简称映射到 DeepSeek 模型名
 export const MODELS = {
-  chat: 'deepseek-v4-pro',      // 通用对话（高质量）
+  chat: 'deepseek-v4-flash',    // 测试阶段统一用 flash（便宜）
   fast: 'deepseek-v4-flash',    // 快速响应
 } as const;
 
