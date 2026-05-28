@@ -11,7 +11,7 @@
 - **认证**：Authing（手机号验证码 / Google OAuth）
 - **数据库**：本地 PostgreSQL（替代 Firestore）
 - **后端**：Node.js + Express REST API（替代 Firebase 后端）
-- **AI**：Google Gemini API
+- **AI**：DeepSeek API（替换 Google Gemini）
 
 ---
 
@@ -25,7 +25,7 @@
 | TypeScript | ~5.8.2 | 类型系统 |
 | Vite | ^6.2.0 | 构建工具 |
 | Tailwind CSS | ^4.1.14 | 样式（通过 `@tailwindcss/vite` 插件） |
-| @google/genai | ^1.29.0 | Gemini AI SDK |
+| DeepSeek API | — | AI 接口（兼容 OpenAI 格式） |
 | @authing/web | ^5.1.21 | Authing OAuth 登录 |
 | authing-js-sdk | ^5.1.21 | 手机号验证码登录/注册 |
 | motion | ^12.23.24 | 动画（Framer Motion） |
@@ -135,13 +135,15 @@ my-ai-chat/
 
 ### 1. 四步深度定制工作流
 
-| 步骤 | Agent | 职责 | 解锁条件 |
-|------|-------|------|---------|
-| **访谈** | 访谈顾问 | 深度挖掘创始人故事（basic → deep） | 始终可用 |
-| **信息** | 信息顾问 | 企业与行业分析报告 | 完成访谈报告 |
-| **定位** | 定位顾问 | 输出 3 版 IP 定位方案 | 完成信息报告 |
-| **文案** | 文案顾问 | 短视频口播文案创作（JSON 输出） | 完成定位报告 |
+| 步骤 | Agent | 职责 | 导航 |
+|------|-------|------|------|
+| **访谈** | 访谈顾问 | 深度挖掘创始人故事 | 始终可用 |
+| **信息** | 信息顾问 | 企业与行业分析报告 | 任意跳转 |
+| **定位** | 定位顾问 | 输出 3 版 IP 定位方案 | 任意跳转 |
+| **文案** | 文案顾问 | 短视频口播文案创作（JSON 输出） | 任意跳转 |
 | **历史** | — | 查看云端存档记录 | 始终可用 |
+
+> 阶段导航已放开限制，用户可自由跳转任意阶段。各阶段内部的数据依赖（如定位阶段读取访谈报告）仍保留，缺失时 AI prompt 中会标注"暂无"并基于通用模板生成。
 
 ### 2. 认证系统
 
@@ -197,7 +199,7 @@ node index.js
 
 **前端 `.env.local`：**
 ```env
-GEMINI_API_KEY=your_gemini_api_key
+DEEPSEEK_API_KEY=your_deepseek_api_key
 ```
 
 **后端 `server/.env`：**
@@ -207,7 +209,7 @@ NODE_ENV=development
 DATABASE_URL=postgresql://aiuser:password@localhost:5432/aichat
 AUTHING_APP_ID=your_app_id
 AUTHING_APP_HOST=https://your-app.authing.cn
-GEMINI_API_KEY=your_gemini_api_key
+DEEPSEEK_API_KEY=your_deepseek_api_key
 ```
 
 ---
@@ -221,6 +223,8 @@ GEMINI_API_KEY=your_gemini_api_key
 | 2026-05-23 | embedding 列从 VECTOR(1536) 降级为 JSONB | 本地 PostgreSQL 未安装 pgvector 扩展 |
 | 2026-05-25 | 后端 JWT 改为直接解析 payload | authing-js-sdk 的 `getUserInfoByAccessToken` 在实例无 token 时无法调用 |
 | 2026-05-27 | 引入 DEBUG_MODE 配置化 | 调试入口需可一键移除，避免上线后 UI 污染 |
+| 2026-05-27 | AI 从 Gemini 迁移到 DeepSeek | Gemini 503 频繁过载，DeepSeek 稳定性更好 |
+| 2026-05-27 | 访谈报告改为手动生成 + 20轮解锁 | 原 5/10 轮过早触发，用户故事还没讲完 |
 
 ---
 
@@ -232,3 +236,30 @@ GEMINI_API_KEY=your_gemini_api_key
 | SSE 消息流 | 🔶 预留 | `/api/conversations/:id/messages/stream` 已预留，未实现 |
 | 前端轮询知识库 | 🔶 可优化 | 当前每 30 秒轮询，可改为 WebSocket/SSE |
 | 后端 RAG 服务 | 🔶 预留 | `server/config/rag.js` 和 `services/` 为骨架 |
+
+---
+
+## 访谈阶段流程（2026-05-27 更新）
+
+```
+用户进入 → AI 开场白
+    ↓
+用户与 AI 自由对话（无自动阶段切换，无强制报告生成）
+    ↓
+【第 20 轮对话后】
+    → 显示提示："已进行 N 轮对话，您可以继续深入交流，或点击生成报告"
+    → 「🌟 生成深度报告」按钮解锁
+    ↓
+用户点击按钮 → 调用 generateDetailedInterviewReport()
+    → 分 5 章调用 DeepSeek（每章 5000-8000 字）
+    → 约 1-2 分钟生成完毕
+    ↓
+报告生成后显示在页面下方
+    → 可下载 Word / Markdown
+    → 可删除报告并重新访谈
+```
+
+**关键规则：**
+- Phase 切换（basic→deep）代码保留但**不自动触发**，等待产品经理确认触发条件
+- 报告生成**纯手动**，取消原有关键词触发和 150 轮自动触发
+- 用户可随时点击顶部导航跳转其他阶段

@@ -286,12 +286,8 @@ function StepIndicator({ currentStep, onStepClick, state }: {
   ];
 
   const isStepUnlocked = (stepId: Step) => {
-    if (stepId === 'interview') return true;
-    if (stepId === 'information') return !!state.interviewReport;
-    if (stepId === 'positioning') return !!state.infoReport;
-    if (stepId === 'copywriting') return !!state.positioningReport;
-    if (stepId === 'history') return true;
-    return false;
+    // 2025-05-22 调整：支持任意页面跳转，阶段解锁不再依赖前置报告
+    return true;
   };
 
   return (
@@ -1794,13 +1790,18 @@ ${relevantKnowledge}`,
                     <Send className="w-4 h-4 md:w-5 md:h-5" />
                   </button>
                 </div>
-                {messages.length > 10 && !state.interviewReport && !isGeneratingDetailedReport && (
-                  <button 
-                    onClick={generateDetailedInterviewReport}
-                    className="px-4 py-3 bg-amber-500 text-white rounded-xl md:rounded-2xl hover:bg-amber-600 transition-all shadow-md text-xs md:text-sm font-bold flex items-center gap-2 whitespace-nowrap"
-                  >
-                    <Sparkles size={16} /> 生成深度报告
-                  </button>
+                {messages.length > 20 && !state.interviewReport && !isGeneratingDetailedReport && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[10px] md:text-xs text-amber-600 font-medium">
+                      💡 已进行 {Math.floor(messages.length / 2)} 轮对话。您可以继续深入交流，或点击下方按钮生成报告。
+                    </p>
+                    <button 
+                      onClick={generateDetailedInterviewReport}
+                      className="px-4 py-3 bg-amber-500 text-white rounded-xl md:rounded-2xl hover:bg-amber-600 transition-all shadow-md text-xs md:text-sm font-bold flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <Sparkles size={16} /> 生成深度报告
+                    </button>
+                  </div>
                 )}
               </div>
               
@@ -2540,18 +2541,12 @@ ${knowledgeContext}` : ""),
       
       setMessages(prev => [...prev, { role: 'model', text: modelText }]);
 
-      // Phase detection logic
-      if (state.interviewPhase === 'basic' && (messages.length > 5 || modelText.includes('第二阶段') || modelText.includes('深度访谈') || modelText.includes('心理专家'))) {
-        setState(prev => ({ ...prev, interviewPhase: 'deep' }));
-      }
+      // Phase detection logic (暂时保留但不自动触发，等待产品经理确认触发条件)
+      // if (state.interviewPhase === 'basic' && (messages.length > 5 || modelText.includes('第二阶段') || modelText.includes('深度访谈') || modelText.includes('心理专家'))) {
+      //   setState(prev => ({ ...prev, interviewPhase: 'deep' }));
+      // }
 
-      // Check if the model generated the report
-      if (modelText.includes('访谈已圆满结束') || modelText.includes('创业经历深度分析报告') || messages.length > 150) {
-        if (!state.interviewReport) {
-          // Auto-trigger detailed report generation if not already generated
-          generateDetailedInterviewReport();
-        }
-      }
+      // 报告强制自动生成已移除，改为用户手动点击生成
     } catch (error) {
       console.error("Interview error:", error);
     } finally {
