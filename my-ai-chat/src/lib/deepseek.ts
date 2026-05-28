@@ -10,6 +10,10 @@
 const API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const BASE_URL = 'https://api.deepseek.com';
 
+if (!API_KEY) {
+  console.error('[DeepSeek] ❌ API Key 未配置。请检查：\n1. .env.local 文件存在且包含 DEEPSEEK_API_KEY\n2. 修改 .env 后需要重启 npm run dev（Vite 不会热重载环境变量）');
+}
+
 // 模型映射：把内部简称映射到 DeepSeek 模型名
 export const MODELS = {
   chat: 'deepseek-v4-pro',      // 通用对话（高质量）
