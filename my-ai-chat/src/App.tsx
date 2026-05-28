@@ -2586,16 +2586,15 @@ ${knowledgeContext}` : ""),
 
       const modelText = await chat.sendMessage(input);
       
-      setMessages(prev => [...prev, { role: 'model', text: modelText }]);
-
-      // Phase detection logic (暂时保留但不自动触发，等待产品经理确认触发条件)
-      // if (state.interviewPhase === 'basic' && (messages.length > 5 || modelText.includes('第二阶段') || modelText.includes('深度访谈') || modelText.includes('心理专家'))) {
-      //   setState(prev => ({ ...prev, interviewPhase: 'deep' }));
-      // }
-
-      // 报告强制自动生成已移除，改为用户手动点击生成
-    } catch (error) {
+      if (!modelText || !modelText.trim()) {
+        setMessages(prev => [...prev, { role: 'model', text: '⚠️ AI 服务暂时不可用，请稍后重试。' }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: modelText }]);
+      }
+    } catch (error: any) {
       console.error("Interview error:", error);
+      const errMsg = error?.message || 'AI 服务暂时不可用';
+      setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${errMsg}，请稍后重试。` }]);
     } finally {
       setIsTyping(false);
     }

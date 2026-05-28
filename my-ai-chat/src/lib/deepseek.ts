@@ -56,6 +56,8 @@ export async function chat(options: ChatOptions): Promise<string> {
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
       const response = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -69,14 +71,14 @@ export async function chat(options: ChatOptions): Promise<string> {
           max_tokens,
           stream: false,
         }),
+        signal: controller.signal,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`DeepSeek API ${response.status}: ${errorText}`);
-      }
+      clearTimeout(timeoutId);
 
       const data = await response.json();
+      if (data.error) {
+        throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
+      }
       const text = data.choices?.[0]?.message?.content || '';
       return text;
     } catch (err: any) {
