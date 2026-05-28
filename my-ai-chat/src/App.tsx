@@ -1578,20 +1578,27 @@ ${relevantKnowledge}`,
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'zh-CN';
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (currentStep === 'interview') {
-          setInput(prev => prev + transcript);
-        } else if (currentStep === 'information') {
-          setCompanyInfo(prev => prev + transcript);
-        } else if (currentStep === 'positioning') {
-          setPositioningFeedback(prev => prev + transcript);
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript;
+          }
         }
-        setIsListening(false);
+        if (finalTranscript) {
+          if (currentStep === 'interview') {
+            setInput(prev => prev + finalTranscript);
+          } else if (currentStep === 'information') {
+            setCompanyInfo(prev => prev + finalTranscript);
+          } else if (currentStep === 'positioning') {
+            setPositioningFeedback(prev => prev + finalTranscript);
+          }
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
