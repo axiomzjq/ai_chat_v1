@@ -46,7 +46,11 @@ export async function chat(options: ChatOptions): Promise<string> {
   if (system) {
     bodyMessages.push({ role: 'system', content: system });
   }
-  bodyMessages.push(...messages);
+  // 运行时映射：前端存储的 'model' role 转为 DeepSeek 要求的 'assistant'
+  bodyMessages.push(...messages.map(m => ({
+    role: ((m as any).role === 'model' ? 'assistant' : m.role) as ChatMessage['role'],
+    content: m.content,
+  })));
 
   let lastError: any;
 
