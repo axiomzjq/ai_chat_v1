@@ -73,8 +73,8 @@ router.post('/', async (req, res, next) => {
       res.write(`event: message_start\n`);
       res.write(`data: ${JSON.stringify({ message_id: messageId })}\n\n`);
 
-      // TODO: 调用 Gemini API 获取流式回复
-      // 当前返回模拟数据，后续接入真实 AI 服务
+      // TODO: 接入 DeepSeek API 获取流式回复
+      // 前端已迁移至 DeepSeek，后端 SSE 通道待接入
       const reply = '收到您的消息，AI 回复功能正在开发中...';
       
       res.write(`event: content_delta\n`);
