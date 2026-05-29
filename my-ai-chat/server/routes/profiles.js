@@ -35,10 +35,10 @@ router.put('/', async (req, res, next) => {
     let idx = 1;
 
     if (current_step !== undefined) { updates.push(`current_step = $${idx++}`); values.push(current_step); }
-    if (interview_data !== undefined) { updates.push(`interview_data = interview_data || $${idx++}`); values.push(JSON.stringify(interview_data)); }
-    if (information_report !== undefined) { updates.push(`information_report = information_report || $${idx++}`); values.push(JSON.stringify(information_report)); }
-    if (positioning_report !== undefined) { updates.push(`positioning_report = positioning_report || $${idx++}`); values.push(JSON.stringify(positioning_report)); }
-    if (copywriting_data !== undefined) { updates.push(`copywriting_data = copywriting_data || $${idx++}`); values.push(JSON.stringify(copywriting_data)); }
+    if (interview_data !== undefined) { updates.push(`interview_data = $${idx++}`); values.push(JSON.stringify(interview_data)); }
+    if (information_report !== undefined) { updates.push(`information_report = $${idx++}`); values.push(JSON.stringify(information_report)); }
+    if (positioning_report !== undefined) { updates.push(`positioning_report = $${idx++}`); values.push(JSON.stringify(positioning_report)); }
+    if (copywriting_data !== undefined) { updates.push(`copywriting_data = $${idx++}`); values.push(JSON.stringify(copywriting_data)); }
 
     if (updates.length === 0) {
       return res.status(400).json({ code: 3001, message: '没有要更新的字段', data: null });

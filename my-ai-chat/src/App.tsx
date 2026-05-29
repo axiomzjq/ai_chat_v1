@@ -1435,7 +1435,7 @@ export default function App() {
             setState(prev => ({
               ...prev,
               interviewReport: data.interview_data?.report || prev.interviewReport,
-              infoReport: data.information_report || prev.infoReport,
+              infoReport: typeof data.information_report === 'string' ? data.information_report : prev.infoReport,
               positioningReport: data.positioning_report || prev.positioningReport,
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
               copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
