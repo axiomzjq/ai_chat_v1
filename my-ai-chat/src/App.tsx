@@ -491,7 +491,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
   onLogin: (user: FirebaseUser, role: 'user' | 'admin') => void,
   isAdmin: boolean,
   setIsAdmin: (val: boolean) => void,
-  onDebugLogin?: () => void
+  onDebugLogin?: (asAdmin: boolean) => void
 }) {
   const [loading, setLoading] = useState(false);
   const [phone, setPhone] = useState('');
@@ -684,10 +684,10 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
               <Bug className="w-3 h-3" /> 导出调试日志
             </button>
             <button
-              onClick={onDebugLogin}
+              onClick={() => onDebugLogin?.(isAdmin)}
               className="text-[10px] text-red-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1 font-bold"
             >
-              🛠️ 调试：管理员一键登录 (17388978910)
+              🛠️ 调试：{isAdmin ? '管理员' : '用户'}一键登录 (17388978910)
             </button>
           </div>
         )}
@@ -2882,7 +2882,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
         onLogin={(user, role) => {
           // Handled by onAuthStateChanged
         }}
-        onDebugLogin={() => {
+        onDebugLogin={(asAdmin) => {
           const mockUser: UserProfile = {
             uid: 'debug-admin-17388978910',
             email: '17388978910',
@@ -2895,7 +2895,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           setState(prev => ({
             ...prev,
             user: mockUser,
-            view: prev.isAdminLogin ? 'admin' : 'app',
+            view: asAdmin ? 'admin' : 'app',
             isAdminLogin: false,
           }));
         }}
