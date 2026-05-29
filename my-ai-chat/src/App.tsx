@@ -617,67 +617,51 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
         </div>
 
         <div className="bg-gray-50 p-8 rounded-[40px] border border-gray-100 space-y-6">
-          {isAdmin ? (
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">手机号码</label>
+              <input 
+                type="tel" 
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+                maxLength={11}
+                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
+                placeholder="13800138000"
+              />
+            </div>
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">验证码</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                  maxLength={6}
+                  className="flex-1 bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
+                  placeholder="123456"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={loading || countdown > 0 || !phone}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-2xl font-bold text-sm hover:bg-gray-300 transition-all disabled:opacity-50 whitespace-nowrap"
+                >
+                  {countdown > 0 ? `${countdown}秒后重发` : '获取验证码'}
+                </button>
+              </div>
+            </div>
             <button 
-              onClick={handleGoogleLogin}
-              disabled={loading}
+              type="submit"
+              disabled={loading || !phone || !code}
               className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={20} />}
-              使用 Google 账号登录
+              {isAdmin ? '管理员登录' : '登录 / 注册'}
             </button>
-          ) : (
-            <form onSubmit={handleAuth} className="space-y-4">
-              <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">手机号码</label>
-                <input 
-                  type="tel" 
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                  maxLength={11}
-                  className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                  placeholder="13800138000"
-                />
-              </div>
-              <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">验证码</label>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    required
-                    maxLength={6}
-                    className="flex-1 bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                    placeholder="123456"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSendCode}
-                    disabled={loading || countdown > 0 || !phone}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-2xl font-bold text-sm hover:bg-gray-300 transition-all disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {countdown > 0 ? `${countdown}秒后重发` : '获取验证码'}
-                  </button>
-                </div>
-              </div>
-              <button 
-                type="submit"
-                disabled={loading || !phone || !code}
-                className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={20} />}
-                登录 / 注册
-              </button>
-            </form>
-          )}
+          </form>
           
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200"></span></div>
-            <div className="relative flex justify-center text-xs uppercase"><span className="bg-gray-50 px-2 text-gray-400">或者</span></div>
-          </div>
-
           <div className="flex flex-col gap-4">
             <button 
               onClick={() => setIsAdmin(!isAdmin)}
@@ -2911,7 +2895,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           setState(prev => ({
             ...prev,
             user: mockUser,
-            view: 'app',
+            view: prev.isAdminLogin ? 'admin' : 'app',
             isAdminLogin: false,
           }));
         }}
