@@ -23,6 +23,38 @@ router.get('/users', async (req, res, next) => {
   }
 });
 
+// POST /api/admin/users/precreated - 预创建用户（通过手机号）
+router.post('/users/precreated', async (req, res, next) => {
+  try {
+    const { phone, subscription_days = 7, token_quota = 100000, role = 'user' } = req.body;
+
+    if (!phone || phone.length < 11) {
+      return res.status(400).json({ code: 4003, message: '请输入有效的手机号码', data: null });
+    }
+
+    // 检查手机号是否已存在（包括预创建和正常用户）
+    const existing = await db.query('SELECT * FROM users WHERE phone = $1', [phone]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ code: 4091, message: '该手机号已存在', data: existing.rows[0] });
+    }
+
+    // 预创建用户：authing_id 用占位符，等用户首次登录时替换
+    const result = await db.query(
+      `INSERT INTO users (authing_id, phone, role, subscription_days, token_quota)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [`precreated:${phone}`, phone, role, parseInt(subscription_days) || 7, parseInt(token_quota) || 100000]
+    );
+
+    // 初始化用户画像
+    await db.query('INSERT INTO user_profiles (user_id) VALUES ($1)', [result.rows[0].id]);
+
+    res.json({ code: 0, message: 'success', data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /api/admin/users/:id/subscription - 修改用户订阅配置
 router.patch('/users/:id/subscription', async (req, res, next) => {
   try {

@@ -713,6 +713,8 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', content: '', type: 'interview' as any });
+  const [preCreateForm, setPreCreateForm] = useState({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' as 'user' | 'admin' });
+  const [preCreating, setPreCreating] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -781,6 +783,30 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
       setUsers(usersRes.data || []);
     } catch (error: any) {
       alert('更新失败：' + (error.message || '未知错误'));
+    }
+  };
+
+  const handlePreCreateUser = async () => {
+    if (!preCreateForm.phone || preCreateForm.phone.length < 11) {
+      alert('请输入有效的手机号码');
+      return;
+    }
+    setPreCreating(true);
+    try {
+      await api.preCreateUser({
+        phone: preCreateForm.phone,
+        subscription_days: preCreateForm.subscription_days,
+        token_quota: preCreateForm.token_quota,
+        role: preCreateForm.role,
+      });
+      alert('预创建成功！');
+      setPreCreateForm({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' });
+      const usersRes = await api.getAdminUsers();
+      setUsers(usersRes.data || []);
+    } catch (error: any) {
+      alert('预创建失败：' + (error.message || '该手机号可能已存在'));
+    } finally {
+      setPreCreating(false);
     }
   };
 
@@ -931,6 +957,63 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
 
         {activeTab === 'users' && (
           <div className="space-y-6">
+            {/* 预创建用户 */}
+            <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 block">预创建用户账户</label>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">手机号</label>
+                  <input
+                    type="tel"
+                    value={preCreateForm.phone}
+                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="13800138000"
+                    maxLength={11}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">订阅天数</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={preCreateForm.subscription_days}
+                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, subscription_days: parseInt(e.target.value) || 7 }))}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">Token 额度</label>
+                  <input
+                    type="number"
+                    min={1000}
+                    step={10000}
+                    value={preCreateForm.token_quota}
+                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, token_quota: parseInt(e.target.value) || 100000 }))}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">角色</label>
+                  <select
+                    value={preCreateForm.role}
+                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  >
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                  </select>
+                </div>
+                <button
+                  onClick={handlePreCreateUser}
+                  disabled={preCreating}
+                  className="w-full bg-black text-white py-2 rounded-xl font-bold text-sm hover:bg-gray-800 transition-all disabled:bg-gray-200"
+                >
+                  {preCreating ? '创建中...' : '预创建'}
+                </button>
+              </div>
+            </div>
+
             {/* 手机号搜索 */}
             <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-4">

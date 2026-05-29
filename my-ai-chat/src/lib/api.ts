@@ -230,6 +230,14 @@ export async function updateUserSubscription(id: string, data: { subscription_da
   return res;
 }
 
+export async function preCreateUser(data: { phone: string; subscription_days?: number; token_quota?: number; role?: 'user' | 'admin' }) {
+  const res = await request<any>('/admin/users/precreated', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return res;
+}
+
 export async function trackTokenUsage(data: { prompt_tokens: number; completion_tokens: number }) {
   const res = await request<any>('/usage/track', {
     method: 'POST',

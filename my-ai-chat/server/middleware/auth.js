@@ -54,26 +54,50 @@ export async function authMiddleware(req, res, next) {
     let isNewUser = false;
 
     if (!user) {
-      // 自动创建新用户
-      // 管理员标识：手机号 17388978910
-      const role = phone === '17388978910' ? 'admin' : 'user';
-      // 默认订阅：7天试用期，100K tokens
-      const defaultDays = role === 'admin' ? 99999 : 7;
-      const defaultTokens = role === 'admin' ? 999999999 : 100000;
-      result = await db.query(
-        `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role, subscription_days, token_quota)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING *`,
-        [authingId, email, phone, displayName, avatarUrl, role, defaultDays, defaultTokens]
-      );
-      user = result.rows[0];
-      isNewUser = true;
+      // 检查是否有同手机号的预创建用户
+      let precreated = null;
+      if (phone) {
+        const preResult = await db.query(
+          "SELECT * FROM users WHERE phone = $1 AND authing_id LIKE 'precreated:%'",
+          [phone]
+        );
+        precreated = preResult.rows[0];
+      }
 
-      // 初始化用户画像
-      await db.query(
-        'INSERT INTO user_profiles (user_id) VALUES ($1)',
-        [user.id]
-      );
+      if (precreated) {
+        // 将预创建用户转正：更新 authing_id 和其他信息
+        result = await db.query(
+          `UPDATE users
+           SET authing_id = $1, email = $2, display_name = $3, avatar_url = $4,
+               subscription_start_at = NOW(), updated_at = NOW()
+           WHERE id = $5
+           RETURNING *`,
+          [authingId, email, displayName, avatarUrl, precreated.id]
+        );
+        user = result.rows[0];
+        isNewUser = true;
+      } else {
+        // 自动创建新用户
+        // 管理员标识：手机号 17388978910
+        const role = phone === '17388978910' ? 'admin' : 'user';
+        // 默认订阅：7天试用期，100K tokens
+        const defaultDays = role === 'admin' ? 99999 : 7;
+        const defaultTokens = role === 'admin' ? 999999999 : 100000;
+        result = await db.query(
+          `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role, subscription_days, token_quota)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
+          [authingId, email, phone, displayName, avatarUrl, role, defaultDays, defaultTokens]
+        );
+        user = result.rows[0];
+        isNewUser = true;
+
+        // 初始化用户画像
+        await db.query(
+          'INSERT INTO user_profiles (user_id) VALUES ($1)',
+          [user.id]
+        );
+      }
     } else if (!user.subscription_start_at) {
       // 已有用户首次登录：启动订阅计时
       await db.query(
