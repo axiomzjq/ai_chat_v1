@@ -715,6 +715,7 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
   const [newDoc, setNewDoc] = useState({ title: '', content: '', type: 'interview' as any });
   const [preCreateForm, setPreCreateForm] = useState({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' as 'user' | 'admin' });
   const [preCreating, setPreCreating] = useState(false);
+  const [showPreCreateModal, setShowPreCreateModal] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -949,63 +950,6 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
 
         {activeTab === 'users' && (
           <div className="space-y-6">
-            {/* 预创建用户 */}
-            <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 block">预创建用户账户</label>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                <div>
-                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">手机号</label>
-                  <input
-                    type="tel"
-                    value={preCreateForm.phone}
-                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="13800138000"
-                    maxLength={11}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">订阅天数</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={preCreateForm.subscription_days}
-                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, subscription_days: parseInt(e.target.value) || 7 }))}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">Token 额度</label>
-                  <input
-                    type="number"
-                    min={1000}
-                    step={10000}
-                    value={preCreateForm.token_quota}
-                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, token_quota: parseInt(e.target.value) || 100000 }))}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-400 font-bold mb-1 block">角色</label>
-                  <select
-                    value={preCreateForm.role}
-                    onChange={(e) => setPreCreateForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-                  >
-                    <option value="user">普通用户</option>
-                    <option value="admin">管理员</option>
-                  </select>
-                </div>
-                <button
-                  onClick={handlePreCreateUser}
-                  disabled={preCreating}
-                  className="w-full bg-black text-white py-2 rounded-xl font-bold text-sm hover:bg-gray-800 transition-all disabled:bg-gray-200"
-                >
-                  {preCreating ? '创建中...' : '预创建'}
-                </button>
-              </div>
-            </div>
-
             {/* 手机号搜索 */}
             <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-4">
@@ -1020,6 +964,12 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                   />
                 </div>
                 <div className="pt-5 flex items-center gap-2">
+                  <button
+                    onClick={() => setShowPreCreateModal(true)}
+                    className="px-4 py-3 text-xs font-bold bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
+                  >
+                    + 预创建用户
+                  </button>
                   <button
                     onClick={loadData}
                     disabled={loading}
@@ -1267,6 +1217,109 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
             </div>
           </div>
         )}
+
+        {/* 预创建用户弹窗 */}
+        <AnimatePresence>
+          {showPreCreateModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setShowPreCreateModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="absolute top-0 left-0 w-full h-2 bg-black" />
+                <button
+                  onClick={() => setShowPreCreateModal(false)}
+                  className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
+                  <User className="w-8 h-8 text-black" />
+                </div>
+
+                <h2 className="text-2xl font-bold mb-2">预创建用户账户</h2>
+                <p className="text-gray-400 text-sm mb-8">输入手机号并设置订阅参数，用户首次登录时自动激活</p>
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">手机号码</label>
+                    <input
+                      type="tel"
+                      value={preCreateForm.phone}
+                      onChange={(e) => setPreCreateForm(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="输入 11 位手机号"
+                      maxLength={11}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">订阅天数</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={preCreateForm.subscription_days}
+                        onChange={(e) => setPreCreateForm(prev => ({ ...prev, subscription_days: parseInt(e.target.value) || 0 }))}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Token 额度</label>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={preCreateForm.token_quota}
+                        onChange={(e) => setPreCreateForm(prev => ({ ...prev, token_quota: parseInt(e.target.value) || 0 }))}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">用户角色</label>
+                    <select
+                      value={preCreateForm.role}
+                      onChange={(e) => setPreCreateForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm appearance-none"
+                    >
+                      <option value="user">普通用户</option>
+                      <option value="admin">管理员</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-8">
+                  <button
+                    onClick={() => setShowPreCreateModal(false)}
+                    className="flex-1 py-4 rounded-2xl font-bold text-sm border border-gray-100 hover:bg-gray-50 transition-all"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handlePreCreateUser}
+                    disabled={preCreating || !preCreateForm.phone || preCreateForm.phone.length < 11}
+                    className="flex-1 bg-black text-white py-4 rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {preCreating ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {preCreating ? '创建中...' : '确认创建'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
