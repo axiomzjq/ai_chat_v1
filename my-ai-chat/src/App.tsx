@@ -122,6 +122,7 @@ interface AppState {
   user: UserProfile | null;
   view: View;
   isAdminLogin: boolean;
+  isDebugLogin: boolean;
   knowledgeBase: any[];
   uploadedMaterials: UploadedMaterial[];
 }
@@ -442,6 +443,7 @@ const initialState: AppState = {
   user: null,
   view: 'login',
   isAdminLogin: false,
+  isDebugLogin: false,
   knowledgeBase: [],
   uploadedMaterials: [],
 };
@@ -1233,7 +1235,11 @@ export default function App() {
           setState(prev => ({ ...prev, user: null, view: 'login' }));
         }
       } else {
-        setState(prev => ({ ...prev, user: null, view: 'login' }));
+        // 调试登录模式下，Firebase 无用户是正常的，不要重置 view
+        setState(prev => {
+          if (prev.isDebugLogin) return prev;
+          return { ...prev, user: null, view: 'login' };
+        });
       }
     });
     return () => unsubscribe();
@@ -2897,6 +2903,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             user: mockUser,
             view: asAdmin ? 'admin' : 'app',
             isAdminLogin: false,
+            isDebugLogin: true,
           }));
         }}
       />
