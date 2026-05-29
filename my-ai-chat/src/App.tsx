@@ -74,8 +74,10 @@ interface UserProfile {
   email: string;
   phone: string | null;
   role: 'user' | 'admin';
-  quotaMinutes: number;
-  usedMinutes: number;
+  subscriptionStartAt: string | null;
+  subscriptionDays: number;
+  tokenQuota: number;
+  tokenUsed: number;
   createdAt: any;
 }
 
@@ -782,11 +784,10 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
     }
   };
 
-  const handleUpdateQuota = async (uid: string, quota: number) => {
+  const handleUpdateSubscription = async (uid: string, days: number, tokens: number) => {
     try {
-      await api.updateUserQuota(uid, { quota_minutes: quota });
-      console.log('[Admin] 配额更新成功:', { uid, quota });
-      // 刷新列表
+      await api.updateUserSubscription(uid, { subscription_days: days, token_quota: tokens });
+      console.log('[Admin] 订阅更新成功:', { uid, days, tokens });
       const usersRes = await api.getAdminUsers();
       setUsers(usersRes.data || []);
     } catch (error: any) {
@@ -794,11 +795,13 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
     }
   };
 
-  const handleResetUsed = async (uid: string) => {
-    if (!confirm('确定重置该用户的已用时长为 0 吗？')) return;
+  const handleResetTokenUsed = async (uid: string) => {
+    if (!confirm('确定重置该用户的 Token 已用量为 0 吗？')) return;
     try {
-      await api.updateUserQuota(uid, { used_minutes: 0 });
-      alert('已用时长已重置');
+      await api.updateUserSubscription(uid, { token_quota: (users.find(u => u.id === uid)?.token_quota || 100000) });
+      // 后端目前没有单独重置 token_used 的接口，需要通过直接 SQL 或扩展 API
+      // 这里先前端提示，实际需要通过 admin API 实现
+      alert('Token 已用量重置功能待后端扩展');
       const usersRes = await api.getAdminUsers();
       setUsers(usersRes.data || []);
     } catch (error: any) {
@@ -959,8 +962,8 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">用户</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">角色</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">总配额 (分)</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">已用 / 剩余</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">订阅天数</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Token 使用</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">注册时间</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">操作</th>
                   </tr>
@@ -973,8 +976,13 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                       return (u.phone || '').includes(search) || (u.email || '').includes(search);
                     })
                     .map((u) => {
-                      const remaining = (u.quota_minutes || 0) - (u.used_minutes || 0);
-                      const isDepleted = remaining <= 0;
+                      const tokenRemaining = (u.token_quota || 0) - (u.token_used || 0);
+                      const tokenPct = (u.token_quota || 1) > 0 ? Math.min(100, ((u.token_used || 0) / u.token_quota) * 100) : 0;
+                      const isTokenDepleted = tokenRemaining <= 0;
+                      const start = u.subscription_start_at ? new Date(u.subscription_start_at) : null;
+                      const expires = start ? new Date(start.getTime() + (u.subscription_days || 0) * 24 * 60 * 60 * 1000) : null;
+                      const isExpired = expires ? new Date() > expires : false;
+                      const remainingDays = expires ? Math.max(0, Math.ceil((expires.getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
                       return (
                         <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-6 py-4">
@@ -992,31 +1000,36 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min={0}
-                                defaultValue={u.quota_minutes || 0}
-                                onBlur={(e) => handleUpdateQuota(u.id, parseInt(e.target.value) || 0)}
-                                className="w-20 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-black"
-                              />
-                              <span className="text-[10px] text-gray-400 font-bold">分钟</span>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  defaultValue={u.subscription_days || 0}
+                                  onBlur={(e) => handleUpdateSubscription(u.id, parseInt(e.target.value) || 0, u.token_quota || 100000)}
+                                  className="w-16 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-black"
+                                />
+                                <span className="text-[10px] text-gray-400 font-bold">天</span>
+                              </div>
+                              <span className={cn("text-[10px] font-bold", isExpired ? "text-red-500" : "text-green-600")}>
+                                {u.subscription_start_at ? (isExpired ? `已过期` : `剩余 ${remainingDays} 天`) : '未开始'}
+                              </span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 text-sm">
-                                <span className="font-mono font-bold">{u.used_minutes || 0}</span>
+                                <span className="font-mono font-bold">{((u.token_used || 0) / 1000).toFixed(1)}K</span>
                                 <span className="text-gray-300">/</span>
-                                <span className={cn("font-mono font-bold", isDepleted ? "text-red-500" : "text-green-600")}>
-                                  {remaining}
+                                <span className={cn("font-mono font-bold", isTokenDepleted ? "text-red-500" : "text-green-600")}>
+                                  {((u.token_quota || 0) / 1000).toFixed(0)}K
                                 </span>
                               </div>
                               {/* 进度条 */}
                               <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                 <div
-                                  className={cn("h-full rounded-full", isDepleted ? "bg-red-400" : "bg-green-400")}
-                                  style={{ width: `${Math.min(100, ((u.quota_minutes || 1) > 0 ? (u.used_minutes || 0) / u.quota_minutes : 0) * 100)}%` }}
+                                  className={cn("h-full rounded-full", isTokenDepleted ? "bg-red-400" : "bg-green-400")}
+                                  style={{ width: `${tokenPct}%` }}
                                 />
                               </div>
                             </div>
@@ -1033,10 +1046,10 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                                 切换角色
                               </button>
                               <button
-                                onClick={() => handleResetUsed(u.id)}
+                                onClick={() => handleResetTokenUsed(u.id)}
                                 className="text-[10px] font-bold text-gray-400 hover:text-green-600 transition-colors"
                               >
-                                重置已用
+                                重置 Token
                               </button>
                             </div>
                           </td>
@@ -1219,8 +1232,10 @@ export default function App() {
                 email: res.user.email || '',
                 phone: res.user.phone || null,
                 role: res.user.role,
-                quotaMinutes: res.user.quota_minutes ?? 60,
-                usedMinutes: res.user.used_minutes ?? 0,
+                subscriptionStartAt: res.user.subscription_start_at || null,
+                subscriptionDays: res.user.subscription_days ?? 7,
+                tokenQuota: res.user.token_quota ?? 100000,
+                tokenUsed: res.user.token_used ?? 0,
                 createdAt: new Date(res.user.created_at),
               };
               setState(prev => ({ 
@@ -1245,28 +1260,23 @@ export default function App() {
     return () => unsubscribe();
   }, [state.isAdminLogin]);
 
-  // Usage Tracking
+  // 订阅状态检查（首次加载时刷新）
   useEffect(() => {
-    if (state.user && state.user.role !== 'admin' && state.view === 'app') {
-      const interval = setInterval(async () => {
-        try {
-          // 每分钟扣减已用额度（前端本地扣减，实际持久化由后端处理）
-          // TODO: 后端实现自动扣减或定时同步
-          setState(prev => {
-            if (!prev.user) return prev;
-            const newUsed = (prev.user.usedMinutes || 0) + 1;
-            return {
-              ...prev,
-              user: { ...prev.user, usedMinutes: newUsed }
-            };
-          });
-        } catch (error) {
-          console.error("Error updating usage duration:", error);
+    if (state.user && state.view === 'app') {
+      api.getUsageMe().then(res => {
+        if (res?.data?.tokens) {
+          setState(prev => ({
+            ...prev,
+            user: prev.user ? {
+              ...prev.user,
+              tokenUsed: res.data.tokens.used,
+              tokenQuota: res.data.tokens.quota,
+            } : null,
+          }));
         }
-      }, 60000); // Every minute
-      return () => clearInterval(interval);
+      }).catch(() => {});
     }
-  }, [state.user?.uid, state.user?.role, state.view]);
+  }, [state.user?.uid, state.view]);
 
   // Knowledge Base State
   useEffect(() => {
@@ -1296,6 +1306,41 @@ export default function App() {
     } catch (error) {
       console.error("Logout error:", error);
     }
+  };
+
+  // 检查用户订阅和 Token 额度
+  const checkUserLimits = (): { ok: boolean; message?: string } => {
+    if (!state.user) return { ok: false, message: '未登录' };
+    if (state.user.role === 'admin') return { ok: true };
+
+    // Token 检查
+    if (state.user.tokenUsed >= state.user.tokenQuota) {
+      return { ok: false, message: '您的 Token 额度已用完，请联系管理员续期。' };
+    }
+
+    // 订阅到期检查
+    if (state.user.subscriptionStartAt) {
+      const start = new Date(state.user.subscriptionStartAt);
+      const expires = new Date(start.getTime() + state.user.subscriptionDays * 24 * 60 * 60 * 1000);
+      if (new Date() > expires) {
+        return { ok: false, message: '您的订阅已到期，请联系管理员续期。' };
+      }
+    }
+
+    return { ok: true };
+  };
+
+  // 上报 Token 使用量并更新本地状态
+  const reportTokenUsage = (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => {
+    if (!state.user || state.user.role === 'admin') return;
+    api.trackTokenUsage(usage).catch(console.error);
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? {
+        ...prev.user,
+        tokenUsed: (prev.user.tokenUsed || 0) + usage.total_tokens,
+      } : null,
+    }));
   };
 
   const resetAllData = () => {
@@ -1513,6 +1558,7 @@ ${messages.map(m => `${m.role}: ${m.text}`).join('\n')}
 
 参考知识库：
 ${relevantKnowledge}`,
+          onUsage: reportTokenUsage,
         });
         fullReport += `## ${section.split('（')[0]}\n\n${text}\n\n`;
       }
@@ -1643,18 +1689,18 @@ ${relevantKnowledge}`,
   };
 
   const renderStep = () => {
-    // Usage Restriction Check
-    const remainingMinutes = (state.user?.quotaMinutes || 0) - (state.user?.usedMinutes || 0);
-    if (state.user && state.user.role !== 'admin' && remainingMinutes <= 0) {
+    // Subscription & Token Restriction Check
+    const limits = checkUserLimits();
+    if (!limits.ok && state.user && state.user.role !== 'admin') {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
           <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center">
             <Clock className="w-10 h-10 text-red-500" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-2xl font-black text-gray-900">使用时长已耗尽</h3>
+            <h3 className="text-2xl font-black text-gray-900">额度限制</h3>
             <p className="text-gray-500 max-w-md mx-auto">
-              您的账号使用时长已到期。请联系管理员进行续费或增加时长，以继续享受深度 IP 顾问服务。
+              {limits.message} 请联系管理员续期。
             </p>
           </div>
           <button 
@@ -2551,6 +2597,12 @@ ${relevantKnowledge}`,
   const handleSendMessage = async () => {
     if (!input.trim() || isTyping) return;
 
+    const limits = checkUserLimits();
+    if (!limits.ok) {
+      setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${limits.message}` }]);
+      return;
+    }
+
     const userMsg: Message = { role: 'user', text: input };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
@@ -2574,7 +2626,7 @@ ${knowledgeContext}` : ""),
         })),
       });
 
-      const modelText = await chat.sendMessage(input);
+      const modelText = await chat.sendMessage(input, reportTokenUsage);
       
       if (!modelText || !modelText.trim()) {
         setMessages(prev => [...prev, { role: 'model', text: '⚠️ AI 服务暂时不可用，请稍后重试。' }]);
@@ -2626,6 +2678,7 @@ ${companyInfo}
 ${knowledgeContext ? `
 参考语料：
 ${knowledgeContext}` : ""}`,
+        onUsage: reportTokenUsage,
       });
       setState(prev => ({ ...prev, infoReport: text || '' }));
     } catch (error) {
@@ -2669,6 +2722,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}
 ${knowledgeContext ? `
 参考语料：
 ${knowledgeContext}` : ""}`,
+        onUsage: reportTokenUsage,
       });
 
       const options = (text || '').split(/(?=###\s+定位分析|###\s+定位方案)/).filter(o => o.trim().length > 50);
@@ -2700,6 +2754,7 @@ ${state.positioningReport}
 ${positioningFeedback}
 
 请根据建议优化该方案，保持专业度。`,
+        onUsage: reportTokenUsage,
       });
       setState(prev => ({ ...prev, positioningReport: newReport }));
       setPositioningFeedback('');
@@ -2803,6 +2858,7 @@ AI说：${modelText}
 请参考以下专业语料提升文案水准：
 ${knowledgeContext}` : "") + "\n\n请务必学习并应用【背景上下文】中的所有资料，确保文案符合定位。如果思路已经非常清晰，请告知用户可以开始生成文案了。请保持专业且富有启发性。",
         messages: chatMsgs,
+        onUsage: reportTokenUsage,
       });
       setState(prev => ({
         ...prev,
@@ -2862,6 +2918,7 @@ ${state.infoReport || "（暂无）"}
 
 【上传资料内容】：
 ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
+        onUsage: reportTokenUsage,
       });
 
       const data = JSON.parse(cwText || '{}');
@@ -2894,8 +2951,10 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             email: '17388978910',
             phone: '17388978910',
             role: 'admin',
-            quotaMinutes: 9999,
-            usedMinutes: 0,
+            subscriptionStartAt: new Date().toISOString(),
+            subscriptionDays: 99999,
+            tokenQuota: 999999999,
+            tokenUsed: 0,
             createdAt: new Date(),
           };
           setState(prev => ({

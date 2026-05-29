@@ -27,6 +27,12 @@ interface ChatMessage {
   content: string;
 }
 
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 interface ChatOptions {
   model?: string;
   system?: string;
@@ -34,6 +40,7 @@ interface ChatOptions {
   temperature?: number;
   max_tokens?: number;
   retries?: number;
+  onUsage?: (usage: TokenUsage) => void;
 }
 
 /**
@@ -80,6 +87,13 @@ export async function chat(options: ChatOptions): Promise<string> {
         throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
       }
       const text = data.choices?.[0]?.message?.content || '';
+      if (options.onUsage && data.usage) {
+        options.onUsage({
+          prompt_tokens: data.usage.prompt_tokens || 0,
+          completion_tokens: data.usage.completion_tokens || 0,
+          total_tokens: data.usage.total_tokens || 0,
+        });
+      }
       return text;
     } catch (err: any) {
       lastError = err;
@@ -105,6 +119,7 @@ export async function generateText(options: {
   prompt: string;
   temperature?: number;
   max_tokens?: number;
+  onUsage?: (usage: TokenUsage) => void;
 }): Promise<string> {
   return chat({
     model: options.model,
@@ -112,6 +127,7 @@ export async function generateText(options: {
     messages: [{ role: 'user', content: options.prompt }],
     temperature: options.temperature,
     max_tokens: options.max_tokens,
+    onUsage: options.onUsage,
   });
 }
 
@@ -129,9 +145,9 @@ export function createChat(options: {
   const system = options.system;
 
   return {
-    async sendMessage(message: string): Promise<string> {
+    async sendMessage(message: string, onUsage?: (usage: TokenUsage) => void): Promise<string> {
       history.push({ role: 'user', content: message });
-      const text = await chat({ model, system, messages: history });
+      const text = await chat({ model, system, messages: history, onUsage });
       history.push({ role: 'assistant', content: text });
       return text;
     },

@@ -57,11 +57,14 @@ export async function authMiddleware(req, res, next) {
       // 自动创建新用户
       // 管理员标识：手机号 17388978910
       const role = phone === '17388978910' ? 'admin' : 'user';
+      // 默认订阅：7天试用期，100K tokens
+      const defaultDays = role === 'admin' ? 99999 : 7;
+      const defaultTokens = role === 'admin' ? 999999999 : 100000;
       result = await db.query(
-        `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role, subscription_days, token_quota)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [authingId, email, phone, displayName, avatarUrl, role]
+        [authingId, email, phone, displayName, avatarUrl, role, defaultDays, defaultTokens]
       );
       user = result.rows[0];
       isNewUser = true;
@@ -71,6 +74,13 @@ export async function authMiddleware(req, res, next) {
         'INSERT INTO user_profiles (user_id) VALUES ($1)',
         [user.id]
       );
+    } else if (!user.subscription_start_at) {
+      // 已有用户首次登录：启动订阅计时
+      await db.query(
+        'UPDATE users SET subscription_start_at = NOW() WHERE id = $1',
+        [user.id]
+      );
+      user.subscription_start_at = new Date().toISOString();
     }
 
     // 设置 PostgreSQL 会话变量（用于 RLS）

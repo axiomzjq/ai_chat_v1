@@ -7,11 +7,12 @@ const router = Router();
 // 所有管理员路由都需要认证 + 管理员权限
 router.use(authMiddleware, requireAdmin);
 
-// GET /api/admin/users - 获取所有用户列表（含配额）
+// GET /api/admin/users - 获取所有用户列表
 router.get('/users', async (req, res, next) => {
   try {
     const result = await db.query(
       `SELECT id, authing_id, email, phone, display_name, avatar_url, role,
+              subscription_start_at, subscription_days, token_quota, token_used,
               quota_minutes, used_minutes, created_at
        FROM users
        ORDER BY created_at DESC`
@@ -22,23 +23,23 @@ router.get('/users', async (req, res, next) => {
   }
 });
 
-// PATCH /api/admin/users/:id/quota - 修改用户配额
-router.patch('/users/:id/quota', async (req, res, next) => {
+// PATCH /api/admin/users/:id/subscription - 修改用户订阅配置
+router.patch('/users/:id/subscription', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { quota_minutes, used_minutes } = req.body;
+    const { subscription_days, token_quota } = req.body;
 
     const updates = [];
     const values = [];
     let idx = 1;
 
-    if (quota_minutes !== undefined) {
-      updates.push(`quota_minutes = $${idx++}`);
-      values.push(parseInt(quota_minutes) || 0);
+    if (subscription_days !== undefined) {
+      updates.push(`subscription_days = $${idx++}`);
+      values.push(parseInt(subscription_days) || 0);
     }
-    if (used_minutes !== undefined) {
-      updates.push(`used_minutes = $${idx++}`);
-      values.push(parseInt(used_minutes) || 0);
+    if (token_quota !== undefined) {
+      updates.push(`token_quota = $${idx++}`);
+      values.push(parseInt(token_quota) || 0);
     }
 
     if (updates.length === 0) {

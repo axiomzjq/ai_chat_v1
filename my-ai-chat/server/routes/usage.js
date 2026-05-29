@@ -1,40 +1,41 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/usage - 获取使用统计
-router.get('/', async (req, res, next) => {
+router.use(authMiddleware);
+
+// POST /api/usage/track - 上报 Token 使用量
+router.post('/track', async (req, res, next) => {
   try {
-    const endDate = req.query.endDate || new Date().toISOString().split('T')[0];
-    const startDate = req.query.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const { prompt_tokens, completion_tokens } = req.body;
+    const total = (parseInt(prompt_tokens) || 0) + (parseInt(completion_tokens) || 0);
 
-    const dailyResult = await db.query(
-      `SELECT date, conversation_count, message_count, total_input_tokens, total_output_tokens, duration_seconds
-       FROM usage_stats
-       WHERE user_id = $1 AND date BETWEEN $2 AND $3
-       ORDER BY date DESC`,
-      [req.user.id, startDate, endDate]
+    if (total <= 0) {
+      return res.status(400).json({ code: 4001, message: 'token 数量无效', data: null });
+    }
+
+    const result = await db.query(
+      `UPDATE users
+       SET token_used = token_used + $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING token_used, token_quota`,
+      [total, req.user.id]
     );
 
-    const summaryResult = await db.query(
-      `SELECT 
-        COALESCE(SUM(conversation_count), 0) as total_conversations,
-        COALESCE(SUM(message_count), 0) as total_messages,
-        COALESCE(SUM(total_input_tokens), 0) as total_input_tokens,
-        COALESCE(SUM(total_output_tokens), 0) as total_output_tokens,
-        COALESCE(SUM(duration_seconds), 0) as total_duration_seconds
-       FROM usage_stats
-       WHERE user_id = $1 AND date BETWEEN $2 AND $3`,
-      [req.user.id, startDate, endDate]
-    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ code: 4041, message: '用户不存在', data: null });
+    }
 
     res.json({
       code: 0,
       message: 'success',
       data: {
-        daily: dailyResult.rows,
-        summary: summaryResult.rows[0],
+        token_used: result.rows[0].token_used,
+        token_quota: result.rows[0].token_quota,
+        remaining: result.rows[0].token_quota - result.rows[0].token_used,
       },
     });
   } catch (err) {
@@ -42,26 +43,35 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// POST /api/usage/track - 记录使用（内部 API，由消息发送时调用）
-router.post('/track', async (req, res, next) => {
+// GET /api/usage/me - 获取当前用户额度状态
+router.get('/me', async (req, res, next) => {
   try {
-    const { date, conversation_count, message_count, input_tokens, output_tokens, duration_seconds } = req.body;
-    const today = date || new Date().toISOString().split('T')[0];
+    const user = req.user;
+    const start = user.subscription_start_at ? new Date(user.subscription_start_at) : null;
+    const now = new Date();
+    const days = user.subscription_days || 0;
+    const expiresAt = start ? new Date(start.getTime() + days * 24 * 60 * 60 * 1000) : null;
+    const isExpired = expiresAt ? now > expiresAt : false;
+    const remainingDays = expiresAt ? Math.max(0, Math.ceil((expiresAt - now) / (24 * 60 * 60 * 1000))) : 0;
 
-    await db.query(
-      `INSERT INTO usage_stats (user_id, date, conversation_count, message_count, total_input_tokens, total_output_tokens, duration_seconds)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (user_id, date)
-       DO UPDATE SET
-         conversation_count = usage_stats.conversation_count + $3,
-         message_count = usage_stats.message_count + $4,
-         total_input_tokens = usage_stats.total_input_tokens + $5,
-         total_output_tokens = usage_stats.total_output_tokens + $6,
-         duration_seconds = usage_stats.duration_seconds + $7`,
-      [req.user.id, today, conversation_count || 0, message_count || 0, input_tokens || 0, output_tokens || 0, duration_seconds || 0]
-    );
-
-    res.json({ code: 0, message: 'success', data: null });
+    res.json({
+      code: 0,
+      message: 'success',
+      data: {
+        subscription: {
+          started_at: user.subscription_start_at,
+          days: user.subscription_days,
+          expires_at: expiresAt?.toISOString() || null,
+          is_expired: isExpired,
+          remaining_days: remainingDays,
+        },
+        tokens: {
+          quota: user.token_quota,
+          used: user.token_used,
+          remaining: Math.max(0, (user.token_quota || 0) - (user.token_used || 0)),
+        },
+      },
+    });
   } catch (err) {
     next(err);
   }
