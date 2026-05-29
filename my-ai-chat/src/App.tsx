@@ -716,32 +716,24 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
   const [preCreateForm, setPreCreateForm] = useState({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' as 'user' | 'admin' });
   const [preCreating, setPreCreating] = useState(false);
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const usersRes = await api.getAdminUsers();
+      setUsers(usersRes.data || []);
+      const fbRes = await api.getFeedback({ pageSize: 100 });
+      setFeedbacks(fbRes.data || []);
+      const kbRes = await api.getKnowledgeBase({ pageSize: 100 });
+      setKnowledge(kbRes.data || []);
+    } catch (err) {
+      console.error('Admin panel load error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        // 加载用户列表
-        const usersRes = await api.getAdminUsers();
-        setUsers(usersRes.data || []);
-        
-        // 加载反馈列表
-        const fbRes = await api.getFeedback({ pageSize: 100 });
-        setFeedbacks(fbRes.data || []);
-        
-        // 加载知识库
-        const kbRes = await api.getKnowledgeBase({ pageSize: 100 });
-        setKnowledge(kbRes.data || []);
-      } catch (err) {
-        console.error('Admin panel load error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
-    
-    // 每 10 秒轮询一次
-    const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   const handleAddKnowledge = async () => {
@@ -1027,7 +1019,14 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-black"
                   />
                 </div>
-                <div className="pt-5">
+                <div className="pt-5 flex items-center gap-2">
+                  <button
+                    onClick={loadData}
+                    disabled={loading}
+                    className="px-4 py-3 text-xs font-bold text-black hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    {loading ? '刷新中...' : '刷新'}
+                  </button>
                   <button
                     onClick={() => setPhoneSearch('')}
                     className="px-4 py-3 text-xs font-bold text-gray-400 hover:text-black transition-colors"
