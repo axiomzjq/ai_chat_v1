@@ -1657,50 +1657,88 @@ export default function App() {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const REPORT_SECTIONS = [
+    "第一章：创始人性格底色与MBTI深度画像",
+    "第二章：成长环境与价值观形成深度复盘",
+    "第三章：创业历程深度回顾与关键决策分析",
+    "第四章：商业模式、核心竞争力与行业洞察",
+    "第五章：精神内核、使命感与未来愿景深度解读"
+  ];
+
+  const getCompletedReportSectionCount = (report: string): number => {
+    let count = 0;
+    for (const section of REPORT_SECTIONS) {
+      if (report.includes(`## ${section}`)) count++;
+    }
+    return count;
+  };
+
+  const isReportComplete = (report: string): boolean => {
+    return report.includes('<!-- REPORT_COMPLETE -->');
+  };
+
   const [isGeneratingDetailedReport, setIsGeneratingDetailedReport] = useState(false);
 
-  const generateDetailedInterviewReport = async () => {
+  const [reportProgress, setReportProgress] = useState('');
+
+  const generateDetailedInterviewReport = async (resumeFromIndex?: number) => {
     setIsGeneratingDetailedReport(true);
+    setReportProgress('正在准备...');
     try {
       const relevantKnowledge = state.knowledgeBase
         .filter(k => k.type === 'interview')
         .map(k => k.content)
         .join('\n\n');
 
-      const sections = [
-        "第一章：创始人性格底色与MBTI深度画像（字数不少于5000字）",
-        "第二章：成长环境与价值观形成深度复盘（字数不少于7000字）",
-        "第三章：创业历程深度回顾与关键决策分析（字数不少于8000字）",
-        "第四章：商业模式、核心竞争力与行业洞察（字数不少于5000字）",
-        "第五章：精神内核、使命感与未来愿景深度解读（字数不少于5000字）"
-      ];
+      let fullReport: string;
+      const startIndex = resumeFromIndex ?? 0;
 
-      let fullReport = "# 创始人创业经历深度分析报告\n\n";
-      fullReport += "## 报告目录\n\n";
-      sections.forEach((s, idx) => {
-        fullReport += `${idx + 1}. ${s.split('（')[0]}\n`;
-      });
-      fullReport += "\n---\n\n";
+      if (startIndex > 0 && state.interviewReport) {
+        // 断点续传：复用已有报告内容
+        fullReport = state.interviewReport.replace('<!-- REPORT_COMPLETE -->', '').trim();
+      } else {
+        // 从头开始
+        fullReport = "# 创始人创业经历深度分析报告\n\n";
+        fullReport += "## 报告目录\n\n";
+        REPORT_SECTIONS.forEach((s, idx) => {
+          fullReport += `${idx + 1}. ${s}\n`;
+        });
+        fullReport += "\n---\n\n";
+        setState(prev => ({ ...prev, interviewReport: fullReport }));
+      }
       
-      for (const section of sections) {
-        const text = await deepseek.generateText({
-          model: deepseek.MODELS.chat,
-          system: "你是一位顶级的IP挖掘专家。你的目标是撰写一份极其详尽、逻辑严密、专业且具有文学美感的深度报告。请务必保证内容的丰富度和深度。每一部分必须包含明确的章节小点（使用H3标题），并以高度结构化的方式呈现。请务必在内容中多使用列表、加粗等排版方式，确保逻辑清晰。如果提供了参考知识库，请务必将其中的行业洞察、专业术语或分析逻辑应用到报告中。",
-          prompt: `基于以下访谈记录和参考知识库，请撰写报告的【${section}】部分：
+      for (let i = startIndex; i < REPORT_SECTIONS.length; i++) {
+        const section = REPORT_SECTIONS[i];
+        setReportProgress(`正在生成第 ${i + 1}/5 章：${section}...`);
+        try {
+          const text = await deepseek.generateText({
+            model: deepseek.MODELS.chat,
+            system: "你是一位顶级的IP挖掘专家。你的目标是撰写一份极其详尽、逻辑严密、专业且具有文学美感的深度报告。请务必保证内容的丰富度和深度。每一部分必须包含明确的章节小点（使用H3标题），并以高度结构化的方式呈现。请务必在内容中多使用列表、加粗等排版方式，确保逻辑清晰。如果提供了参考知识库，请务必将其中的行业洞察、专业术语或分析逻辑应用到报告中。",
+            prompt: `基于以下访谈记录和参考知识库，请撰写报告的【${section}】部分（字数不少于5000字）：
 
 访谈记录：
 ${messages.map(m => `${m.role}: ${m.text}`).join('\n')}
 
 参考知识库：
 ${relevantKnowledge}`,
-          onUsage: reportTokenUsage,
-        });
-        fullReport += `## ${section.split('（')[0]}\n\n${text}\n\n`;
+            onUsage: reportTokenUsage,
+          });
+          fullReport += `## ${section}\n\n${text}\n\n`;
+        } catch (sectionErr: any) {
+          console.error(`[Report] 第 ${i + 1} 章生成失败:`, sectionErr);
+          fullReport += `## ${section}\n\n> ⚠️ 该章节生成失败：${sectionErr.message || 'AI 服务暂时不可用'}\n\n`;
+        }
+        // 每完成一章就保存进度
+        setState(prev => ({ ...prev, interviewReport: fullReport }));
       }
 
-      setState(prev => ({ ...prev, interviewReport: fullReport }));
-    } catch (error) {
+      // 标记完成
+      setState(prev => ({ ...prev, interviewReport: fullReport + '\n\n<!-- REPORT_COMPLETE -->' }));
+      setReportProgress('');
+    } catch (error: any) {
       console.error("Detailed report error:", error);
+      alert('报告生成失败：' + (error.message || 'AI 服务暂时不可用，请稍后重试'));
+      setReportProgress('');
     } finally {
       setIsGeneratingDetailedReport(false);
     }
@@ -1858,6 +1896,9 @@ ${relevantKnowledge}`,
           <div className="space-y-2">
             <h3 className="text-xl md:text-2xl font-bold text-black">正在为您深度复盘访谈内容...</h3>
             <p className="text-gray-400 text-sm md:text-base italic">正在挖掘您的核心优势与独特人设标签</p>
+            {reportProgress && (
+              <p className="text-amber-600 text-sm font-bold mt-2">{reportProgress}</p>
+            )}
           </div>
         </div>
       );
@@ -1922,60 +1963,56 @@ ${relevantKnowledge}`,
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 max-h-[400px] md:max-h-[500px]">
-              {messages.map((m, i) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  key={i} 
-                  className={cn(
-                    "flex w-full group gap-3",
-                    m.role === 'user' ? "flex-row-reverse" : "flex-row"
-                  )}
-                >
-                  <div className={cn(
-                    "w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden shrink-0 shadow-sm border border-gray-100",
-                    m.role === 'user' ? "bg-black" : "bg-white"
-                  )}>
-                    <img 
-                      src={m.role === 'user' ? USER_AVATAR : BOT_AVATAR} 
-                      alt={m.role === 'user' ? "User" : "Consultant"} 
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <div className={cn(
-                    "max-w-[75%] md:max-w-[70%] p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm leading-relaxed relative",
-                    m.role === 'user' ? "bg-black text-white rounded-tr-none shadow-lg" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm"
-                  )}>
-                    {m.role === 'model' && (
-                      <button 
-                        onClick={() => handlePlayVoice(m.text, i)}
-                        className={cn(
-                          "absolute -right-8 top-0 p-1.5 rounded-full transition-all",
-                          playingIndex === i ? "bg-black text-white animate-pulse" : "bg-gray-100 text-gray-400 hover:text-black opacity-0 group-hover:opacity-100"
-                        )}
-                      >
-                        {playingIndex === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
-                      </button>
+              {messages.map((m, i) => {
+                const isLastModel = m.role === 'model' && isTyping && i === messages.length - 1;
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={i}
+                    className={cn(
+                      "flex w-full group gap-3",
+                      m.role === 'user' ? "flex-row-reverse" : "flex-row"
                     )}
-                    <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
-                      <ReactMarkdown>
-                        {m.text}
-                      </ReactMarkdown>
+                  >
+                    <div className={cn(
+                      "w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden shrink-0 shadow-sm border border-gray-100",
+                      m.role === 'user' ? "bg-black" : "bg-white"
+                    )}>
+                      <img
+                        src={m.role === 'user' ? USER_AVATAR : BOT_AVATAR}
+                        alt={m.role === 'user' ? "User" : "Consultant"}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-              {isTyping && (
-                <div className="flex justify-start gap-3">
-                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden shrink-0 shadow-sm border border-gray-100 bg-white">
-                    <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                  <div className="bg-white border border-gray-100 p-3 md:p-4 rounded-xl md:rounded-2xl rounded-tl-none shadow-sm">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                  </div>
-                </div>
-              )}
+                    <div className={cn(
+                      "max-w-[75%] md:max-w-[70%] p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm leading-relaxed relative",
+                      m.role === 'user' ? "bg-black text-white rounded-tr-none shadow-lg" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm"
+                    )}>
+                      {m.role === 'model' && (
+                        <button
+                          onClick={() => handlePlayVoice(m.text, i)}
+                          className={cn(
+                            "absolute -right-8 top-0 p-1.5 rounded-full transition-all",
+                            playingIndex === i ? "bg-black text-white animate-pulse" : "bg-gray-100 text-gray-400 hover:text-black opacity-0 group-hover:opacity-100"
+                          )}
+                        >
+                          {playingIndex === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
+                        </button>
+                      )}
+                      <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
+                        <ReactMarkdown>
+                          {m.text}
+                        </ReactMarkdown>
+                        {isLastModel && (
+                          <span className="inline-block w-1.5 h-4 md:w-2 md:h-5 bg-black ml-0.5 align-text-bottom animate-pulse rounded-sm" />
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
               <div ref={chatEndRef} />
             </div>
 
@@ -2008,14 +2045,21 @@ ${relevantKnowledge}`,
                     <Send className="w-4 h-4 md:w-5 md:h-5" />
                   </button>
                 </div>
-                {messages.length > 20 && !state.interviewReport && !isGeneratingDetailedReport && (
+                {!state.interviewReport && !isGeneratingDetailedReport && messages.length > 1 && (
                   <div className="flex flex-col gap-2">
-                    <p className="text-[10px] md:text-xs text-amber-600 font-medium">
-                      💡 已进行 {Math.floor(messages.length / 2)} 轮对话。您可以继续深入交流，或点击下方按钮生成报告。
-                    </p>
-                    <button 
-                      onClick={generateDetailedInterviewReport}
-                      className="px-4 py-3 bg-amber-500 text-white rounded-xl md:rounded-2xl hover:bg-amber-600 transition-all shadow-md text-xs md:text-sm font-bold flex items-center gap-2 whitespace-nowrap"
+                    {messages.length < 6 ? (
+                      <p className="text-[10px] md:text-xs text-gray-400 font-medium">
+                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，继续深入交流可获得更丰富的报告
+                      </p>
+                    ) : (
+                      <p className="text-[10px] md:text-xs text-amber-600 font-medium">
+                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话。您可以继续深入交流，或点击下方按钮生成报告。
+                      </p>
+                    )}
+                    <button
+                      onClick={() => generateDetailedInterviewReport()}
+                      disabled={messages.length < 6}
+                      className="px-4 py-3 bg-amber-500 text-white rounded-xl md:rounded-2xl hover:bg-amber-600 transition-all shadow-md text-xs md:text-sm font-bold flex items-center gap-2 whitespace-nowrap disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
                     >
                       <Sparkles size={16} /> 生成深度报告
                     </button>
@@ -2023,12 +2067,51 @@ ${relevantKnowledge}`,
                 )}
               </div>
               
+              {state.interviewReport && !isGeneratingDetailedReport && !isReportComplete(state.interviewReport) && (
+                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-amber-800">
+                      ⚠️ 检测到上次报告生成中断
+                    </p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      已完成 {getCompletedReportSectionCount(state.interviewReport)}/5 章，可继续生成剩余章节
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const completed = getCompletedReportSectionCount(state.interviewReport);
+                        generateDetailedInterviewReport(completed);
+                      }}
+                      className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-all shadow-sm"
+                    >
+                      继续生成
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('确定要重新生成报告吗？\n\n已有的章节内容将被清除，从第1章重新开始。')) {
+                          setState(prev => ({ ...prev, interviewReport: '' }));
+                          generateDetailedInterviewReport();
+                        }
+                      }}
+                      className="px-4 py-2 bg-white text-gray-600 border border-gray-200 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all"
+                    >
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {state.interviewReport && (
                 <div className="mt-8">
                   <CollapsibleSection title="查看访谈报告" icon={FileText}>
                     <div className="flex items-center justify-between mb-4">
-                      <button 
-                        onClick={restartInterview}
+                      <button
+                        onClick={() => {
+                          if (window.confirm('确定要删除访谈报告并重新开始访谈吗？\n\n这将清除所有访谈对话记录和已生成的报告，此操作不可恢复。')) {
+                            restartInterview();
+                          }
+                        }}
                         className="text-xs text-red-500 hover:text-red-600 transition-colors flex items-center gap-1 font-bold"
                       >
                         <Trash2 size={14} /> 删除报告并重新访谈
@@ -2065,7 +2148,10 @@ ${relevantKnowledge}`,
               {isGeneratingDetailedReport && (
                 <div className="mt-8 p-8 bg-black text-white rounded-3xl flex flex-col items-center justify-center space-y-4">
                   <Loader2 className="w-8 h-8 animate-spin" />
-                  <p className="text-sm font-bold animate-pulse">正在生成3万字深度分析报告，请稍候...</p>
+                  <p className="text-sm font-bold animate-pulse">正在生成深度分析报告，请稍候...</p>
+                  {reportProgress && (
+                    <p className="text-xs text-amber-300 font-medium">{reportProgress}</p>
+                  )}
                   <p className="text-[10px] opacity-50">这可能需要1-2分钟，请不要关闭页面</p>
                 </div>
               )}
@@ -2738,10 +2824,13 @@ ${relevantKnowledge}`,
       return;
     }
 
-    const userMsg: Message = { role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
+    const userText = input;
+    setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setInput('');
     setIsTyping(true);
+
+    // 先插入一条空的 model 消息，流式内容会追加到这里
+    setMessages(prev => [...prev, { role: 'model', text: '' }]);
 
     try {
       const knowledgeContext = state.knowledgeBase
@@ -2749,30 +2838,55 @@ ${relevantKnowledge}`,
         .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
         .join('\n\n');
 
-      const chat = deepseek.createChat({
+      await deepseek.chatStream({
         model: deepseek.MODELS.fast,
         system: INTERVIEW_SYSTEM_PROMPT + (knowledgeContext ? `
 
 【重要：请严格遵循以下管理员提供的专业访谈方法论进行提问】：
 ${knowledgeContext}` : ""),
-        history: messages.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.text,
-        })),
+        messages: [
+          ...messages.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.text,
+          })),
+          { role: 'user', content: userText },
+        ],
+        onChunk: (chunk) => {
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'model') {
+              return [...prev.slice(0, -1), { ...last, text: last.text + chunk }];
+            }
+            return prev;
+          });
+        },
+        onDone: (_fullText, usage) => {
+          if (usage) reportTokenUsage(usage);
+          setIsTyping(false);
+        },
+        onError: (err) => {
+          console.error('Interview stream error:', err);
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'model') {
+              return [...prev.slice(0, -1), { ...last, text: `⚠️ ${err.message}，请稍后重试。` }];
+            }
+            return [...prev, { role: 'model', text: `⚠️ ${err.message}，请稍后重试。` }];
+          });
+          setIsTyping(false);
+        },
       });
-
-      const modelText = await chat.sendMessage(input, reportTokenUsage);
-      
-      if (!modelText || !modelText.trim()) {
-        setMessages(prev => [...prev, { role: 'model', text: '⚠️ AI 服务暂时不可用，请稍后重试。' }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'model', text: modelText }]);
-      }
     } catch (error: any) {
-      console.error("Interview error:", error);
+      // chatStream 内部已经通过 onError 处理了错误，这里是兜底
+      console.error('Interview error:', error);
       const errMsg = error?.message || 'AI 服务暂时不可用';
-      setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${errMsg}，请稍后重试。` }]);
-    } finally {
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'model') {
+          return [...prev.slice(0, -1), { ...last, text: `⚠️ ${errMsg}，请稍后重试。` }];
+        }
+        return [...prev, { role: 'model', text: `⚠️ ${errMsg}，请稍后重试。` }];
+      });
       setIsTyping(false);
     }
   };

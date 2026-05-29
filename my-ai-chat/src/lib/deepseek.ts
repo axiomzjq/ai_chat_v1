@@ -43,28 +43,32 @@ interface ChatOptions {
   onUsage?: (usage: TokenUsage) => void;
 }
 
-/**
- * 调用 DeepSeek Chat API
- */
-export async function chat(options: ChatOptions): Promise<string> {
-  const { model = MODELS.chat, system, messages, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
-
+function buildBodyMessages(options: ChatOptions): ChatMessage[] {
+  const { system, messages } = options;
   const bodyMessages: ChatMessage[] = [];
   if (system) {
     bodyMessages.push({ role: 'system', content: system });
   }
-  // 运行时映射：前端存储的 'model' role 转为 DeepSeek 要求的 'assistant'
   bodyMessages.push(...messages.map(m => ({
     role: ((m as any).role === 'model' ? 'assistant' : m.role) as ChatMessage['role'],
     content: m.content,
   })));
+  return bodyMessages;
+}
+
+/**
+ * 调用 DeepSeek Chat API（非流式）
+ */
+export async function chat(options: ChatOptions): Promise<string> {
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
+  const bodyMessages = buildBodyMessages(options);
 
   let lastError: any;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
       const response = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -108,6 +112,109 @@ export async function chat(options: ChatOptions): Promise<string> {
   }
 
   throw lastError;
+}
+
+export interface ChatStreamCallbacks {
+  onChunk: (text: string) => void;
+  onDone?: (fullText: string, usage?: TokenUsage) => void;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * 流式调用 DeepSeek Chat API（SSE）
+ * 逐 chunk 回调，适合对话界面打字机效果
+ */
+export async function chatStream(
+  options: Omit<ChatOptions, 'onUsage'> & ChatStreamCallbacks,
+): Promise<void> {
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, onChunk, onDone, onError } = options;
+  const bodyMessages = buildBodyMessages(options);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 流式给 120s
+    const response = await fetch(`${BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: bodyMessages,
+        temperature,
+        max_tokens,
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      let msg = `HTTP ${response.status}`;
+      try {
+        const errData = JSON.parse(text);
+        msg = errData.error?.message || text || msg;
+      } catch { /* ignore */ }
+      throw new Error(`DeepSeek API error: ${msg}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is not readable');
+
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let fullText = '';
+    let lastUsage: TokenUsage | undefined;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // 保留未完整的一行
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.error) {
+            throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
+          }
+          const delta = data.choices?.[0]?.delta;
+          const chunkText = delta?.content || '';
+          if (chunkText) {
+            fullText += chunkText;
+            onChunk(chunkText);
+          }
+          if (data.usage) {
+            lastUsage = {
+              prompt_tokens: data.usage.prompt_tokens || 0,
+              completion_tokens: data.usage.completion_tokens || 0,
+              total_tokens: data.usage.total_tokens || 0,
+            };
+          }
+        } catch (parseErr: any) {
+          // 忽略单条解析失败，继续处理后续 chunk
+          console.warn('[DeepSeek] SSE parse warn:', parseErr.message, 'line:', trimmed.slice(0, 100));
+        }
+      }
+    }
+
+    onDone?.(fullText, lastUsage);
+  } catch (err: any) {
+    if (onError) {
+      onError(err instanceof Error ? err : new Error(String(err)));
+    } else {
+      throw err;
+    }
+  }
 }
 
 /**
