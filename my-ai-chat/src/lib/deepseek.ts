@@ -62,35 +62,47 @@ function buildBodyMessages(options: ChatOptions): ChatMessage[] {
 export async function chat(options: ChatOptions): Promise<string> {
   const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
   const bodyMessages = buildBodyMessages(options);
+  const body = JSON.stringify({ model, messages: bodyMessages, temperature, max_tokens, stream: false });
+
+  console.log(`[DeepSeek] Request: model=${model}, messages=${bodyMessages.length}, bodySize=${body.length} chars`);
 
   let lastError: any;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 定位报告可能很长，给 120s
       const response = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${API_KEY}`,
         },
-        body: JSON.stringify({
-          model,
-          messages: bodyMessages,
-          temperature,
-          max_tokens,
-          stream: false,
-        }),
+        body,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      const data = await response.json();
+      console.log(`[DeepSeek] Response: HTTP ${response.status} ${response.statusText}`);
+
+      // 防御：先读 text 再 parse，避免 ReadableStream 被拦截器消费后无法读取
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error('[DeepSeek] JSON parse failed. Raw response:', responseText.slice(0, 500));
+        throw new Error(`DeepSeek API returned non-JSON: ${responseText.slice(0, 200)}`);
+      }
+
       if (data.error) {
         throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
       }
-      const text = data.choices?.[0]?.message?.content || '';
+      if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        console.error('[DeepSeek] Empty choices. Full response:', JSON.stringify(data).slice(0, 500));
+        throw new Error('DeepSeek API returned empty choices (possibly context length exceeded or model error)');
+      }
+      const text = data.choices[0]?.message?.content || '';
       if (options.onUsage && data.usage) {
         options.onUsage({
           prompt_tokens: data.usage.prompt_tokens || 0,
@@ -101,6 +113,7 @@ export async function chat(options: ChatOptions): Promise<string> {
       return text;
     } catch (err: any) {
       lastError = err;
+      console.error(`[DeepSeek] Attempt ${attempt + 1}/${retries + 1} failed:`, err?.message || err);
       const is503 = err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
       if (is503 && attempt < retries) {
         console.warn(`[DeepSeek] 503 retry ${attempt + 1}/${retries}, waiting 2s...`);

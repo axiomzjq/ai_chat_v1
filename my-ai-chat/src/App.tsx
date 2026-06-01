@@ -1538,54 +1538,88 @@ export default function App() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
-      Array.from(files).forEach(file => {
-        const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-        const isDocx = file.name.endsWith('.docx');
-        const isText = file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.txt');
-        
-        if (isText || isExcel || isDocx) {
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            let content = '';
-            if (isExcel) {
-              const data = new Uint8Array(event.target?.result as ArrayBuffer);
-              const workbook = XLSX.read(data, { type: 'array' });
-              const sheetName = workbook.SheetNames[0];
-              const worksheet = workbook.Sheets[sheetName];
-              content = XLSX.utils.sheet_to_txt(worksheet);
-            } else if (isDocx) {
-              const arrayBuffer = event.target?.result as ArrayBuffer;
-              const result = await mammoth.extractRawText({ arrayBuffer });
-              content = result.value;
-            } else {
-              content = event.target?.result as string;
-            }
-            
-            // AI 自动整理
-            const organizedContent = await organizeContentWithAI(content);
-            
-            const newMaterial: UploadedMaterial = {
-              name: file.name,
-              type: file.type,
-              size: (file.size / 1024 / 1024).toFixed(2) + 'MB',
-              content: organizedContent
-            };
+    if (!files) return;
 
-            setState(prev => ({
-              ...prev,
-              uploadedMaterials: [...prev.uploadedMaterials, newMaterial]
-            }));
+    Array.from(files).forEach(file => {
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+      const isDocx = file.name.endsWith('.docx');
+      const isDoc = file.name.endsWith('.doc');
+      const isText = file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.txt');
+      const isPdf = file.name.endsWith('.pdf');
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+
+      // 不支持的格式：明确提示
+      if (isPdf || isImage || isVideo) {
+        alert(`暂不支持 ${file.name} 的格式（${isPdf ? 'PDF' : isImage ? '图片' : '视频'}）。\n请先将其内容复制粘贴到文本框中，或转换为 .txt/.docx 格式后再上传。`);
+        return;
+      }
+
+      if (!isText && !isExcel && !isDocx && !isDoc) {
+        alert(`不支持的文件格式：${file.name}\n目前仅支持 .txt, .md, .docx, .doc, .xlsx, .xls`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          let content = '';
+          if (isExcel) {
+            const data = new Uint8Array(event.target?.result as ArrayBuffer);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            content = XLSX.utils.sheet_to_txt(worksheet);
+          } else if (isDocx || isDoc) {
+            const arrayBuffer = event.target?.result as ArrayBuffer;
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            content = result.value;
+            if (!content && isDoc) {
+              alert(`${file.name} 解析失败。.doc（旧格式）请另存为 .docx 后再上传。`);
+              return;
+            }
+          } else {
+            content = event.target?.result as string;
+          }
+
+          if (!content || !content.trim()) {
+            alert(`${file.name} 内容为空，请检查文件。`);
+            return;
+          }
+
+          // AI 自动整理
+          const organizedContent = await organizeContentWithAI(content);
+
+          const newMaterial: UploadedMaterial = {
+            name: file.name,
+            type: file.type,
+            size: (file.size / 1024 / 1024).toFixed(2) + 'MB',
+            content: organizedContent
           };
 
-          if (isExcel || isDocx) {
-            reader.readAsArrayBuffer(file);
-          } else {
-            reader.readAsText(file);
-          }
+          setState(prev => ({
+            ...prev,
+            uploadedMaterials: [...prev.uploadedMaterials, newMaterial]
+          }));
+        } catch (err: any) {
+          console.error('[Upload] 处理失败:', err);
+          alert(`文件 ${file.name} 处理失败：${err.message || '未知错误'}`);
         }
-      });
-    }
+      };
+
+      reader.onerror = () => {
+        alert(`无法读取文件 ${file.name}，请重试。`);
+      };
+
+      if (isExcel || isDocx || isDoc) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file);
+      }
+    });
+
+    // 清空 input 值，允许重复选择同一文件
+    e.target.value = '';
   };
 
   // --- Interview Agent State ---
@@ -2540,36 +2574,32 @@ ${relevantKnowledge}`,
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                    {state.copywritingMessages.map((msg, idx) => (
-                      <motion.div 
-                        key={idx}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={cn("flex gap-3 md:gap-4", msg.role === 'user' ? "flex-row-reverse" : "")}
-                      >
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-100 shadow-sm">
-                          <img src={msg.role === 'user' ? USER_AVATAR : BOT_AVATAR} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        </div>
-                        <div className={cn(
-                          "max-w-[85%] md:max-w-[70%] p-3 md:p-4 rounded-2xl text-sm md:text-base shadow-sm",
-                          msg.role === 'user' ? "bg-black text-white rounded-tr-none" : "bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100"
-                        )}>
-                          <div className="markdown-body prose prose-sm max-w-none prose-inherit">
-                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    {state.copywritingMessages.map((msg, idx) => {
+                      const isLastModel = msg.role === 'model' && isCopywritingThinking && idx === state.copywritingMessages.length - 1;
+                      return (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={cn("flex gap-3 md:gap-4", msg.role === 'user' ? "flex-row-reverse" : "")}
+                        >
+                          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-100 shadow-sm">
+                            <img src={msg.role === 'user' ? USER_AVATAR : BOT_AVATAR} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                    {isCopywritingThinking && (
-                      <div className="flex gap-4">
-                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-100 shadow-sm">
-                          <img src={BOT_AVATAR} alt="Bot" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-2xl rounded-tl-none border border-gray-100">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                        </div>
-                      </div>
-                    )}
+                          <div className={cn(
+                            "max-w-[85%] md:max-w-[70%] p-3 md:p-4 rounded-2xl text-sm md:text-base shadow-sm",
+                            msg.role === 'user' ? "bg-black text-white rounded-tr-none" : "bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100"
+                          )}>
+                            <div className="markdown-body prose prose-sm max-w-none prose-inherit">
+                              <ReactMarkdown>{msg.text}</ReactMarkdown>
+                              {isLastModel && (
+                                <span className="inline-block w-1.5 h-4 md:w-2 md:h-5 bg-black ml-0.5 align-text-bottom animate-pulse rounded-sm" />
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                     <div ref={copywritingEndRef} />
                   </div>
 
@@ -2950,6 +2980,19 @@ ${knowledgeContext}` : ""}`,
         .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
         .join('\n\n');
 
+      // 防止 prompt 过长超出上下文限制，对报告做截断保留
+      const MAX_REPORT_CHARS = 8000;
+      const interviewSummary = state.interviewReport
+        ? state.interviewReport.length > MAX_REPORT_CHARS
+          ? state.interviewReport.slice(0, MAX_REPORT_CHARS) + '\n\n...（内容已截断，后续内容省略）'
+          : state.interviewReport
+        : "";
+      const infoSummary = state.infoReport
+        ? state.infoReport.length > MAX_REPORT_CHARS
+          ? state.infoReport.slice(0, MAX_REPORT_CHARS) + '\n\n...（内容已截断，后续内容省略）'
+          : state.infoReport
+        : "";
+
       const text = await deepseek.generateText({
         model: deepseek.MODELS.chat,
         system: POSITIONING_SYSTEM_PROMPT + (knowledgeContext ? `
@@ -2960,10 +3003,10 @@ ${knowledgeContext}` : ""}`,
 【特别说明】：如果以下报告内容为空或信息不足，请根据您的专业知识提供通用的、具有启发性的 ToB 创始人 IP 定位模板，并引导用户在后续对话中补充具体信息。
 
 【个人IP分析报告】：
-${state.interviewReport || "（暂无，请基于通用 ToB 创始人画像提供建议）"}
+${interviewSummary || "（暂无，请基于通用 ToB 创始人画像提供建议）"}
 
 【企业与行业分析报告】：
-${state.infoReport || "（暂无，请基于通用 ToB 行业逻辑提供建议）"}
+${infoSummary || "（暂无，请基于通用 ToB 行业逻辑提供建议）"}
 
 【上传资料内容】：
 ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}
@@ -2971,8 +3014,14 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}
 ${knowledgeContext ? `
 参考语料：
 ${knowledgeContext}` : ""}`,
+        max_tokens: 16000, // 定位报告输出量大（3个方案），给更多空间
         onUsage: reportTokenUsage,
       });
+
+      if (!text || !text.trim()) {
+        alert('定位方案生成返回空内容，请稍后重试。');
+        return;
+      }
 
       const options = (text || '').split(/(?=###\s+定位分析|###\s+定位方案)/).filter(o => o.trim().length > 50);
 
@@ -2982,8 +3031,9 @@ ${knowledgeContext}` : ""}`,
         selectedPositioningIndex: 0,
         positioningReport: options[0] || text
       }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Positioning generation error:", error);
+      alert('定位方案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
     } finally {
       setIsGeneratingPositioning(false);
     }
