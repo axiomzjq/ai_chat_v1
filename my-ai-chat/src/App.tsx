@@ -645,7 +645,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
                 required
                 maxLength={11}
                 className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                placeholder="13800138000"
+                placeholder="请输入手机号码"
               />
             </div>
             <div className="space-y-2 text-left">
@@ -658,7 +658,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
                   required
                   maxLength={6}
                   className="flex-1 bg-white border border-gray-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
-                  placeholder="123456"
+                  placeholder="请输入验证码"
                 />
                 <button
                   type="button"
