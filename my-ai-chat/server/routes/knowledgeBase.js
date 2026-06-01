@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
 
     const queryParams = [...params, pageSize, offset];
     const result = await db.query(
-      `SELECT id, title, category, source, file_type, created_at, updated_at
+      `SELECT id, title, content, category, source, file_type, created_at, updated_at
        FROM knowledge_base
        WHERE 1=1 ${whereClause}
        ORDER BY created_at DESC
