@@ -18,23 +18,53 @@ function getJwks() {
 }
 
 /**
- * 验证 JWT 签名（使用 Authing JWKS 公钥）
+ * 验证 Token（优先 JWKS 验签，失败时调用 Authing API 备选验证）
+ * authing-js-sdk 的 token 不是标准 JWT，需要 API 验证
  */
 async function verifyJwt(token) {
+  // 方案 1：JWKS 验签（适用于 @authing/web 的 OIDC id_token）
   try {
     const keySet = getJwks();
-    if (!keySet) {
-      console.error('[Auth] JWKS 未初始化，请检查 AUTHING_APP_HOST 环境变量');
-      return null;
+    if (keySet) {
+      const { payload } = await jwtVerify(token, keySet, {
+        clockTolerance: 60,
+      });
+      return payload;
     }
+  } catch (err) {
+    console.log('[Auth] JWKS verify failed, trying Authing API fallback:', err.message);
+  }
 
-    const { payload } = await jwtVerify(token, keySet, {
-      clockTolerance: 60, // 允许 60 秒时钟偏差
+  // 方案 2：Authing API 验证（适用于 authing-js-sdk 的 token）
+  try {
+    const profileUrl = AUTHING_APP_HOST
+      ? `${AUTHING_APP_HOST}/api/v3/get-profile`
+      : null;
+    if (!profileUrl) return null;
+
+    const response = await fetch(profileUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
 
-    return payload;
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data.statusCode !== 200 || !data.data) return null;
+
+    const user = data.data;
+    return {
+      sub: user.id || user.sub,
+      email: user.email || null,
+      phone: user.phone || user.phone_number || null,
+      name: user.name || user.nickname || null,
+      picture: user.photo || user.picture || user.avatar || null,
+    };
   } catch (err) {
-    console.error('[Auth] JWT verify failed:', err.message);
+    console.error('[Auth] Authing API fallback failed:', err.message);
     return null;
   }
 }
