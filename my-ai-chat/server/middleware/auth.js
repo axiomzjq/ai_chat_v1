@@ -3,12 +3,16 @@ import { db } from '../db.js';
 
 const AUTHING_APP_HOST = process.env.AUTHING_APP_HOST;
 const AUTHING_APP_ID = process.env.AUTHING_APP_ID;
+const AUTHING_JWKS_URL = process.env.AUTHING_JWKS_URL;
 
 let jwks = null;
 
 function getJwks() {
-  if (!jwks && AUTHING_APP_HOST) {
-    jwks = createRemoteJWKSet(new URL(`${AUTHING_APP_HOST}/.well-known/jwks.json`));
+  if (!jwks) {
+    const jwksUrl = AUTHING_JWKS_URL || (AUTHING_APP_HOST ? `${AUTHING_APP_HOST}/.well-known/jwks.json` : null);
+    if (jwksUrl) {
+      jwks = createRemoteJWKSet(new URL(jwksUrl));
+    }
   }
   return jwks;
 }
