@@ -100,46 +100,89 @@ my-ai-chat/
 
 ---
 
-## 第四步：日常开发标准姿势
+## 第四步：开发方式与启动指令
 
-每次开发时，同时开**两个终端**。VS Code 里按 `` Ctrl+` `` 打开终端，点 `+` 新建第二个。
+本项目是**前后端分离**架构，开发时需要同时启动前端和后端。
 
-### 终端 1 — 开发服务器（一直保持运行）
+### 环境准备（首次）
+
+1. **安装前后端依赖**
+   ```bash
+   # 前端依赖
+   npm install
+   
+   # 后端依赖
+   cd server && npm install
+   ```
+
+2. **配置环境变量**
+   项目需要两个环境变量文件（不在 git 中，需手动创建）：
+   - 根目录 `.env.local`：Authing 前端配置
+   - `server/.env`：后端数据库、Authing、DeepSeek API Key 等
+   
+   具体配置项请参考 `docs/ONBOARDING.md`。
+
+3. **初始化数据库**
+   确保 PostgreSQL 已安装并运行，然后执行：
+   ```bash
+   # 创建数据库和用户（以 postgres 执行）
+   psql -U postgres -c "CREATE DATABASE aichat;"
+   psql -U postgres -c "CREATE USER aiuser WITH PASSWORD 'aichat_pass_2026';"
+   psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE aichat TO aiuser;"
+   psql -U postgres -c "GRANT ALL ON SCHEMA public TO aiuser;"
+   
+   # 执行建表脚本
+   cd server
+   psql -U postgres -d aichat -f schema.sql
+   ```
+
+### 日常开发：同时开两个终端
+
+VS Code 里按 `` Ctrl+` `` 打开终端，点 `+` 新建第二个。
+
+#### 终端 1 — 前端开发服务器
 
 ```bash
 npm run dev
 ```
 
-看到 `http://localhost:5173` 后，浏览器打开这个地址。后面代码一改，页面自动刷新。
+前端默认运行在 `http://localhost:5173`，代码修改后页面自动刷新。
 
-### 终端 2 — Claude Code
+> **frp 穿透用户注意**：如果需要通过内网穿透（如 SakuraFrp）外网访问，启动时需绑定 IPv4：
+> ```bash
+> npm run dev -- --host=127.0.0.1 --port=5173
+> ```
+> 同时 `vite.config.ts` 中已配置 `allowedHosts` 允许 frp 域名访问。
+
+#### 终端 2 — 后端开发服务器
 
 ```bash
-claude
+cd server
+npm run dev
 ```
 
-进入后直接用中文说需求，例如：
+后端运行在 `http://localhost:3001`，带 `--watch` 自动重载。
+
+### 调试登录（开发环境）
+
+前端登录页在 `DEBUG_MODE=true` 时会显示"调试一键登录"按钮，点击即可免验证码进入应用（自动分配管理员权限）。
+
+> 调试登录会在 `localStorage` 写入 mock token，后端开发环境会识别并放行。
+
+### 典型开发节奏
 
 ```
-> 帮我在 App.jsx 里做一个简单的对话界面，
-  上方显示消息列表，下方有输入框和发送按钮，
-  用户按回车或点按钮发送消息
-```
-
-Claude Code 会读取项目文件，直接修改代码，切换到浏览器即可看到效果。
-
-### 典型对话节奏
-
-```
-你：帮我加一个角色选择的侧边栏，有"记者"和"心理咨询师"两个选项
+你：帮我加一个角色选择的侧边栏
 Claude Code：[修改文件] 已完成...
 
-你：记者那个图标换成麦克风，字体颜色改深一点
+你：记者那个图标换成麦克风
 Claude Code：[修改样式] 已更新...
 
-你：点击角色切换时，右边对话区域要清空重置
-Claude Code：[修改状态逻辑] 已添加 resetChat 函数...
+你：点击角色切换时对话区域要清空
+Claude Code：[修改状态逻辑] 已添加...
 ```
+
+修改后切换到浏览器 `localhost:5173` 查看效果。
 
 ---
 

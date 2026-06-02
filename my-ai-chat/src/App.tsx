@@ -3371,6 +3371,8 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             tokenUsed: 0,
             createdAt: new Date(),
           };
+          // 调试模式下写入 mock token，避免 API 请求 401
+          localStorage.setItem('authing_access_token', 'debug-token-mock');
           setState(prev => ({
             ...prev,
             user: mockUser,

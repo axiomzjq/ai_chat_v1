@@ -46,7 +46,20 @@ export async function authMiddleware(req, res, next) {
   }
 
   const token = authHeader.slice(7);
-  const payload = await verifyJwt(token);
+
+  // 开发环境调试 token 支持
+  let payload = null;
+  if (process.env.NODE_ENV === 'development' && token === 'debug-token-mock') {
+    payload = {
+      sub: 'debug-admin-17388978910',
+      email: '17388978910',
+      phone: '17388978910',
+      name: '调试管理员',
+      picture: null,
+    };
+  } else {
+    payload = await verifyJwt(token);
+  }
 
   if (!payload) {
     return res.status(401).json({ code: 1001, message: 'Token 无效或已过期', data: null });
