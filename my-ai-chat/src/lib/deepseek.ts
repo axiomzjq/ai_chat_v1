@@ -4,7 +4,7 @@
  * 后端持有 API Key，前端仅携带用户 Token 进行认证
  */
 
-const BASE_URL = 'http://localhost:3001/api/ai';
+const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'}/ai`;
 
 function getAuthToken(): string | null {
   return localStorage.getItem('authing_access_token');
