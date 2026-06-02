@@ -3,7 +3,7 @@
  * 替代 Firestore 的所有数据操作
  */
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 function getToken(): string | null {
   // 从 localStorage 或 Authing 缓存中获取 access token

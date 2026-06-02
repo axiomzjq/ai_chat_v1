@@ -18,23 +18,74 @@ function getJwks() {
 }
 
 /**
- * 验证 JWT 签名（使用 Authing JWKS 公钥）
+ * 验证 Token（优先 JWKS 验签，失败时调用 Authing GraphQL API 验证）
  */
 async function verifyJwt(token) {
+  // 方案 1：JWKS 验签（适用于 @authing/web 的 OIDC id_token）
   try {
     const keySet = getJwks();
-    if (!keySet) {
-      console.error('[Auth] JWKS 未初始化，请检查 AUTHING_APP_HOST 环境变量');
+    if (keySet) {
+      const { payload } = await jwtVerify(token, keySet, {
+        clockTolerance: 60,
+      });
+      return payload;
+    }
+  } catch (err) {
+    console.log('[Auth] JWKS verify failed, trying GraphQL fallback:', err.message);
+  }
+
+  // 方案 2：Authing GraphQL v2 API（和前端 authing-js-sdk 用同一套接口）
+  try {
+    const graphqlUrl = AUTHING_APP_HOST
+      ? `${AUTHING_APP_HOST}/graphql/v2`
+      : null;
+    if (!graphqlUrl) return null;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `
+          query {
+            user {
+              id
+              email
+              phone
+              name
+              nickname
+              photo
+            }
+          }
+        `,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log('[Auth] GraphQL fallback HTTP error:', response.status);
       return null;
     }
 
-    const { payload } = await jwtVerify(token, keySet, {
-      clockTolerance: 60, // 允许 60 秒时钟偏差
-    });
+    const data = await response.json();
+    if (data.errors) {
+      console.log('[Auth] GraphQL fallback error:', data.errors[0]?.message);
+      return null;
+    }
 
-    return payload;
+    const user = data.data?.user;
+    if (!user || !user.id) return null;
+
+    return {
+      sub: user.id,
+      email: user.email || null,
+      phone: user.phone || null,
+      name: user.name || user.nickname || null,
+      picture: user.photo || null,
+    };
   } catch (err) {
-    console.error('[Auth] JWT verify failed:', err.message);
+    console.error('[Auth] GraphQL fallback failed:', err?.message || err);
     return null;
   }
 }
@@ -46,7 +97,20 @@ export async function authMiddleware(req, res, next) {
   }
 
   const token = authHeader.slice(7);
-  const payload = await verifyJwt(token);
+
+  // 开发环境调试 token 支持
+  let payload = null;
+  if (process.env.NODE_ENV === 'development' && token === 'debug-token-mock') {
+    payload = {
+      sub: 'debug-admin-17388978910',
+      email: '17388978910',
+      phone: '17388978910',
+      name: '调试管理员',
+      picture: null,
+    };
+  } else {
+    payload = await verifyJwt(token);
+  }
 
   if (!payload) {
     return res.status(401).json({ code: 1001, message: 'Token 无效或已过期', data: null });
