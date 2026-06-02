@@ -19,7 +19,7 @@ function getJwks() {
 }
 
 /**
- * 验证 Token（优先 JWKS 验签，失败时用 authing-js-sdk 备选验证）
+ * 验证 Token（优先 JWKS 验签，失败时调用 Authing GraphQL API 验证）
  */
 async function verifyJwt(token) {
   // 方案 1：JWKS 验签（适用于 @authing/web 的 OIDC id_token）
@@ -32,20 +32,50 @@ async function verifyJwt(token) {
       return payload;
     }
   } catch (err) {
-    console.log('[Auth] JWKS verify failed, trying Authing SDK fallback:', err.message);
+    console.log('[Auth] JWKS verify failed, trying GraphQL fallback:', err.message);
   }
 
-  // 方案 2：authing-js-sdk 验证（适用于 loginByPhoneCode 返回的 token）
+  // 方案 2：Authing GraphQL v2 API（和前端 authing-js-sdk 用同一套接口）
   try {
-    if (!AUTHING_APP_ID || !AUTHING_APP_HOST) {
-      console.error('[Auth] Authing config missing for SDK fallback');
+    const graphqlUrl = AUTHING_APP_HOST
+      ? `${AUTHING_APP_HOST}/graphql/v2`
+      : null;
+    if (!graphqlUrl) return null;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `
+          query {
+            user {
+              id
+              email
+              phone
+              name
+              nickname
+              photo
+            }
+          }
+        `,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log('[Auth] GraphQL fallback HTTP error:', response.status);
       return null;
     }
-    const authClient = new AuthenticationClient({
-      appId: AUTHING_APP_ID,
-      appHost: AUTHING_APP_HOST,
-    });
-    const user = await authClient.getProfile(token);
+
+    const data = await response.json();
+    if (data.errors) {
+      console.log('[Auth] GraphQL fallback error:', data.errors[0]?.message);
+      return null;
+    }
+
+    const user = data.data?.user;
     if (!user || !user.id) return null;
 
     return {
@@ -56,7 +86,7 @@ async function verifyJwt(token) {
       picture: user.photo || null,
     };
   } catch (err) {
-    console.error('[Auth] Authing SDK fallback failed:', err?.message || err);
+    console.error('[Auth] GraphQL fallback failed:', err?.message || err);
     return null;
   }
 }
