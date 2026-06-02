@@ -7,9 +7,8 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.DEEPSEEK_API_KEY': JSON.stringify(env.DEEPSEEK_API_KEY),
-    },
+    // 安全：不再将任何 API Key 注入前端 bundle
+    // DeepSeek API Key 仅在后端 .env 中配置，前端通过后端代理调用
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

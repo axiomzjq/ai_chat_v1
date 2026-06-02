@@ -1,20 +1,36 @@
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { db } from '../db.js';
 
+const AUTHING_APP_HOST = process.env.AUTHING_APP_HOST;
+const AUTHING_APP_ID = process.env.AUTHING_APP_ID;
+
+let jwks = null;
+
+function getJwks() {
+  if (!jwks && AUTHING_APP_HOST) {
+    jwks = createRemoteJWKSet(new URL(`${AUTHING_APP_HOST}/.well-known/jwks.json`));
+  }
+  return jwks;
+}
+
 /**
- * 解析 JWT payload（base64url 解码）
- * Authing 的 access token 是标准 JWT，payload 包含 sub, email, phone, name 等
+ * 验证 JWT 签名（使用 Authing JWKS 公钥）
  */
-function parseJwtPayload(token) {
+async function verifyJwt(token) {
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    // base64url -> base64
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const json = Buffer.from(base64, 'base64').toString('utf-8');
-    return JSON.parse(json);
-  } catch (e) {
-    console.error('[Auth] JWT parse error:', e.message);
+    const keySet = getJwks();
+    if (!keySet) {
+      console.error('[Auth] JWKS 未初始化，请检查 AUTHING_APP_HOST 环境变量');
+      return null;
+    }
+
+    const { payload } = await jwtVerify(token, keySet, {
+      clockTolerance: 60, // 允许 60 秒时钟偏差
+    });
+
+    return payload;
+  } catch (err) {
+    console.error('[Auth] JWT verify failed:', err.message);
     return null;
   }
 }
@@ -26,10 +42,10 @@ export async function authMiddleware(req, res, next) {
   }
 
   const token = authHeader.slice(7);
-  const payload = parseJwtPayload(token);
+  const payload = await verifyJwt(token);
 
   if (!payload) {
-    return res.status(401).json({ code: 1001, message: 'Token 格式无效', data: null });
+    return res.status(401).json({ code: 1001, message: 'Token 无效或已过期', data: null });
   }
 
   // 检查 token 是否过期
@@ -78,8 +94,9 @@ export async function authMiddleware(req, res, next) {
         isNewUser = true;
       } else {
         // 自动创建新用户
-        // 管理员标识：手机号 17388978910
-        const role = phone === '17388978910' ? 'admin' : 'user';
+        // 管理员标识：从环境变量读取，默认使用原手机号（生产环境应更换）
+        const adminPhone = process.env.ADMIN_PHONE || '17388978910';
+        const role = phone === adminPhone ? 'admin' : 'user';
         // 默认订阅：7天试用期，100K tokens
         const defaultDays = role === 'admin' ? 99999 : 7;
         const defaultTokens = role === 'admin' ? 999999999 : 100000;
@@ -108,10 +125,11 @@ export async function authMiddleware(req, res, next) {
     }
 
     // 设置 PostgreSQL 会话变量（用于 RLS）
-    // 注意：SET 命令不支持参数化查询，需要字符串拼接
-    // 参数名必须用双引号包裹，因为 current_user 是 PostgreSQL 保留关键字
-    await db.query(`SET "app.current_user" = '${user.id}'`);
-    await db.query(`SET "app.current_user_role" = '${user.role}'`);
+    // 使用参数化方式：先做一次安全的字符串转义
+    const safeUserId = String(user.id).replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeUserRole = String(user.role).replace(/[^a-zA-Z0-9_-]/g, '');
+    await db.query(`SET "app.current_user" = '${safeUserId}'`);
+    await db.query(`SET "app.current_user_role" = '${safeUserRole}'`);
 
     req.user = user;
     req.isNewUser = isNewUser;

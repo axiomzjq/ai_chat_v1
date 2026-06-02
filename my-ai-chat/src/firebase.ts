@@ -25,21 +25,31 @@ export const firebaseInitError = _firebaseInitError;
 // ==================== Authing Integration (Replaces Firebase Auth) ====================
 // 使用 Authing 替代 Firebase Auth，解决中国大陆网络访问问题
 
+// 从环境变量读取 Authing 配置，避免凭据硬编码
+const AUTING_APP_ID = import.meta.env.VITE_AUTHING_APP_ID || '';
+const AUTING_DOMAIN = import.meta.env.VITE_AUTHING_DOMAIN || '';
+const AUTING_USER_POOL_ID = import.meta.env.VITE_AUTHING_USER_POOL_ID || '';
+const AUTING_HOST = AUTING_DOMAIN ? `https://${AUTING_DOMAIN}` : '';
+
 let authingClient: Authing | null = null;
 let authClient: AuthenticationClient | null = null;
 try {
-  authingClient = new Authing({
-    domain: 'https://fnbd4tjpcxb5-demo.authing.cn',
-    appId: '6a13a72bc34d1d925e777d82',
-    userPoolId: '6a13a72a8abfe23c1e51cc0a',
-    redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
-    scope: 'openid profile email offline_access',
-  });
-  // authing-js-sdk client for phone code login/register
-  authClient = new AuthenticationClient({
-    appId: '6a13a72bc34d1d925e777d82',
-    appHost: 'https://fnbd4tjpcxb5-demo.authing.cn',
-  });
+  if (AUTING_APP_ID && AUTING_HOST) {
+    authingClient = new Authing({
+      domain: AUTING_HOST,
+      appId: AUTING_APP_ID,
+      userPoolId: AUTING_USER_POOL_ID,
+      redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
+      scope: 'openid profile email offline_access',
+    });
+    // authing-js-sdk client for phone code login/register
+    authClient = new AuthenticationClient({
+      appId: AUTING_APP_ID,
+      appHost: AUTING_HOST,
+    });
+  } else {
+    console.warn('[Auth] Authing 未配置，请在 .env.local 中设置 VITE_AUTHING_APP_ID 和 VITE_AUTHING_DOMAIN');
+  }
 } catch (err) {
   console.error('Authing init failed:', err);
 }
@@ -275,8 +285,8 @@ export async function loginByPhoneCode(phone: string, code: string) {
  */
 /*
 export async function loginByPhoneCodeDirect(phone: string, code: string) {
-  const appId = '6a13a72bc34d1d925e777d82';
-  const appHost = 'https://fnbd4tjpcxb5-demo.authing.cn';
+  const appId = import.meta.env.VITE_AUTHING_APP_ID || '';
+  const appHost = `https://${import.meta.env.VITE_AUTHING_DOMAIN || ''}`;
   const url = `${appHost}/api/v3/signin-by-passcode`;
 
   const response = await fetch(url, {

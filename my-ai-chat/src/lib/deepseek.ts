@@ -1,17 +1,13 @@
 /**
- * DeepSeek API 客户端（兼容 OpenAI 格式）
- * 替换原有的 Google GenAI SDK
- *
- * 文档: https://api-docs.deepseek.com/
- * Base URL: https://api.deepseek.com
- * 模型: deepseek-v4-pro | deepseek-v4-flash
+ * DeepSeek API 客户端（后端代理版）
+ * 前端不再直接调用 DeepSeek API，而是通过后端代理
+ * 后端持有 API Key，前端仅携带用户 Token 进行认证
  */
 
-const API_KEY = process.env.DEEPSEEK_API_KEY || '';
-const BASE_URL = 'https://api.deepseek.com';
+const BASE_URL = 'http://localhost:3001/api/ai';
 
-if (!API_KEY) {
-  console.error('[DeepSeek] ❌ API Key 未配置。请检查：\n1. .env.local 文件存在且包含 DEEPSEEK_API_KEY\n2. 修改 .env 后需要重启 npm run dev（Vite 不会热重载环境变量）');
+function getAuthToken(): string | null {
+  return localStorage.getItem('authing_access_token');
 }
 
 // 模型映射：把内部简称映射到 DeepSeek 模型名
@@ -57,57 +53,56 @@ function buildBodyMessages(options: ChatOptions): ChatMessage[] {
 }
 
 /**
- * 调用 DeepSeek Chat API（非流式）
+ * 调用 DeepSeek Chat API（非流式，后端代理）
  */
 export async function chat(options: ChatOptions): Promise<string> {
   const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
   const bodyMessages = buildBodyMessages(options);
-  const body = JSON.stringify({ model, messages: bodyMessages, temperature, max_tokens, stream: false });
+  const token = getAuthToken();
 
-  console.log(`[DeepSeek] Request: model=${model}, messages=${bodyMessages.length}, bodySize=${body.length} chars`);
+  console.log(`[DeepSeek] Request: model=${model}, messages=${bodyMessages.length}`);
 
   let lastError: any;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 定位报告可能很长，给 120s
-      const response = await fetch(`${BASE_URL}/chat/completions`, {
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      const response = await fetch(`${BASE_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body,
+        body: JSON.stringify({
+          model,
+          messages: bodyMessages,
+          temperature,
+          max_tokens,
+        }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      console.log(`[DeepSeek] Response: HTTP ${response.status} ${response.statusText}`);
-
-      // 防御：先读 text 再 parse，避免 ReadableStream 被拦截器消费后无法读取
       const responseText = await response.text();
       let data: any;
       try {
         data = JSON.parse(responseText);
       } catch (parseErr) {
         console.error('[DeepSeek] JSON parse failed. Raw response:', responseText.slice(0, 500));
-        throw new Error(`DeepSeek API returned non-JSON: ${responseText.slice(0, 200)}`);
+        throw new Error(`AI API returned non-JSON: ${responseText.slice(0, 200)}`);
       }
 
-      if (data.error) {
-        throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
+      if (!response.ok || data.code !== 0) {
+        throw new Error(data.message || `HTTP ${response.status}`);
       }
-      if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-        console.error('[DeepSeek] Empty choices. Full response:', JSON.stringify(data).slice(0, 500));
-        throw new Error('DeepSeek API returned empty choices (possibly context length exceeded or model error)');
-      }
-      const text = data.choices[0]?.message?.content || '';
-      if (options.onUsage && data.usage) {
+
+      const text = data.data?.text || '';
+      if (options.onUsage && data.data?.usage) {
         options.onUsage({
-          prompt_tokens: data.usage.prompt_tokens || 0,
-          completion_tokens: data.usage.completion_tokens || 0,
-          total_tokens: data.usage.total_tokens || 0,
+          prompt_tokens: data.data.usage.prompt_tokens || 0,
+          completion_tokens: data.data.usage.completion_tokens || 0,
+          total_tokens: data.data.usage.total_tokens || 0,
         });
       }
       return text;
@@ -134,7 +129,7 @@ export interface ChatStreamCallbacks {
 }
 
 /**
- * 流式调用 DeepSeek Chat API（SSE）
+ * 流式调用 DeepSeek Chat API（SSE，后端代理透传）
  * 逐 chunk 回调，适合对话界面打字机效果
  */
 export async function chatStream(
@@ -142,22 +137,22 @@ export async function chatStream(
 ): Promise<void> {
   const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, onChunk, onDone, onError } = options;
   const bodyMessages = buildBodyMessages(options);
+  const token = getAuthToken();
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 流式给 120s
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const response = await fetch(`${BASE_URL}/chat-stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
         model,
         messages: bodyMessages,
         temperature,
         max_tokens,
-        stream: true,
       }),
       signal: controller.signal,
     });
@@ -168,9 +163,9 @@ export async function chatStream(
       let msg = `HTTP ${response.status}`;
       try {
         const errData = JSON.parse(text);
-        msg = errData.error?.message || text || msg;
+        msg = errData.message || text || msg;
       } catch { /* ignore */ }
-      throw new Error(`DeepSeek API error: ${msg}`);
+      throw new Error(`AI API error: ${msg}`);
     }
 
     const reader = response.body?.getReader();
@@ -187,7 +182,7 @@ export async function chatStream(
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保留未完整的一行
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -214,7 +209,6 @@ export async function chatStream(
             };
           }
         } catch (parseErr: any) {
-          // 忽略单条解析失败，继续处理后续 chunk
           console.warn('[DeepSeek] SSE parse warn:', parseErr.message, 'line:', trimmed.slice(0, 100));
         }
       }
@@ -253,7 +247,6 @@ export async function generateText(options: {
 
 /**
  * 多轮对话封装（手动维护历史）
- * 兼容原来 ai.chats.create 的用法
  */
 export function createChat(options: {
   model?: string;
@@ -278,4 +271,4 @@ export function createChat(options: {
 }
 
 // 日志
-console.info('[DeepSeek] 客户端已初始化');
+console.info('[DeepSeek] 客户端已初始化（后端代理模式）');
