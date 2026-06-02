@@ -49,6 +49,8 @@ try {
       userPoolId: AUTING_USER_POOL_ID,
       redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
       scope: 'openid profile email offline_access',
+      // HTTP 非安全上下文下 crypto API 不可用，降级为隐式授权模式
+      useImplicitMode: typeof window !== 'undefined' && window.location.protocol !== 'https:',
     });
     // authing-js-sdk client for phone code login/register
     authClient = new AuthenticationClient({
