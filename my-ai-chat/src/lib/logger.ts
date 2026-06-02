@@ -26,6 +26,9 @@ function pushLog(type: LogEntry['type'], args: any[]) {
       .map((a) => {
         if (a === null) return 'null';
         if (a === undefined) return 'undefined';
+        if (a instanceof Error) {
+          return a.stack || a.message || String(a);
+        }
         if (typeof a === 'object') {
           try {
             return JSON.stringify(a);

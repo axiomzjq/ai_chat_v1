@@ -60,8 +60,10 @@ try {
     console.warn('[Auth] Authing 未配置，请在 .env.local 中设置 VITE_AUTHING_APP_ID 和 VITE_AUTHING_DOMAIN');
   }
 } catch (err: any) {
-  console.error('[Auth] Authing init failed:', err?.message || err);
-  console.error('[Auth] Stack:', err?.stack);
+  console.error('[Auth] Authing init failed:', err?.message || String(err));
+  console.error('[Auth] Error type:', err?.constructor?.name || typeof err);
+  console.error('[Auth] Full error:', err);
+  if (err?.stack) console.error('[Auth] Stack:', err.stack);
 }
 
 export type FirebaseUser = {
