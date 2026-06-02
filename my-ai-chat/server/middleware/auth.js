@@ -1,4 +1,5 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { AuthenticationClient } from 'authing-js-sdk';
 import { db } from '../db.js';
 
 const AUTHING_APP_HOST = process.env.AUTHING_APP_HOST;
@@ -18,8 +19,7 @@ function getJwks() {
 }
 
 /**
- * 验证 Token（优先 JWKS 验签，失败时调用 Authing API 备选验证）
- * authing-js-sdk 的 token 不是标准 JWT，需要 API 验证
+ * 验证 Token（优先 JWKS 验签，失败时用 authing-js-sdk 备选验证）
  */
 async function verifyJwt(token) {
   // 方案 1：JWKS 验签（适用于 @authing/web 的 OIDC id_token）
@@ -32,39 +32,31 @@ async function verifyJwt(token) {
       return payload;
     }
   } catch (err) {
-    console.log('[Auth] JWKS verify failed, trying Authing API fallback:', err.message);
+    console.log('[Auth] JWKS verify failed, trying Authing SDK fallback:', err.message);
   }
 
-  // 方案 2：Authing API 验证（适用于 authing-js-sdk 的 token）
+  // 方案 2：authing-js-sdk 验证（适用于 loginByPhoneCode 返回的 token）
   try {
-    const profileUrl = AUTHING_APP_HOST
-      ? `${AUTHING_APP_HOST}/api/v3/get-profile`
-      : null;
-    if (!profileUrl) return null;
-
-    const response = await fetch(profileUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+    if (!AUTHING_APP_ID || !AUTHING_APP_HOST) {
+      console.error('[Auth] Authing config missing for SDK fallback');
+      return null;
+    }
+    const authClient = new AuthenticationClient({
+      appId: AUTHING_APP_ID,
+      appHost: AUTHING_APP_HOST,
     });
+    const user = await authClient.getProfile(token);
+    if (!user || !user.id) return null;
 
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    if (data.statusCode !== 200 || !data.data) return null;
-
-    const user = data.data;
     return {
-      sub: user.id || user.sub,
+      sub: user.id,
       email: user.email || null,
-      phone: user.phone || user.phone_number || null,
+      phone: user.phone || null,
       name: user.name || user.nickname || null,
-      picture: user.photo || user.picture || user.avatar || null,
+      picture: user.photo || null,
     };
   } catch (err) {
-    console.error('[Auth] Authing API fallback failed:', err.message);
+    console.error('[Auth] Authing SDK fallback failed:', err?.message || err);
     return null;
   }
 }
