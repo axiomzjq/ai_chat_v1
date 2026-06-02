@@ -85,20 +85,44 @@ cd server && npm install
 
 > **注意**：后端使用了原生 `fetch`（Node.js 18+ 支持），请确保 Node.js 版本 ≥ 18。可用 `node --version` 检查。
 
-### Step 3：安装 PostgreSQL 并创建数据库
+### Step 3：安装 PostgreSQL 并初始化数据库
 
-用户需要在本机安装 PostgreSQL。然后执行：
+用户需要在本机安装 PostgreSQL。
+
+**3.1 创建数据库和用户**（以 postgres 超级用户执行）：
 
 ```bash
-# 创建数据库和用户（以 postgres 超级用户执行）
 psql -U postgres -c "CREATE DATABASE aichat;"
 psql -U postgres -c "CREATE USER aiuser WITH PASSWORD 'aichat_pass_2026';"
 psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE aichat TO aiuser;"
+```
 
-# 执行建表脚本（在 server 目录下）
+**3.2 执行建表脚本**（在 `server` 目录下）：
+
+```bash
 cd server
 psql -U aiuser -d aichat -f schema.sql
 ```
+
+> 或使用 npm script：
+> ```bash
+> cd server && npm run db:init
+> ```
+
+**3.3 验证表结构**（可选）：
+
+```bash
+psql -U aiuser -d aichat -c "\dt"
+psql -U aiuser -d aichat -c "\d users"
+```
+
+确认 `users` 表包含以下字段：
+- `subscription_start_at`
+- `subscription_days`
+- `token_quota`
+- `token_used`
+
+> ⚠️ **注意**：本项目不使用迁移脚本。`schema.sql` 是唯一的初始化脚本，可直接重复执行（使用 `IF NOT EXISTS` 和 `DROP POLICY IF EXISTS` 保证幂等性）。如果表结构需要变更，直接修改 `schema.sql` 后重新执行即可（开发环境可删库重建）。
 
 > 如果用户想换数据库用户名/密码，需要同步修改 `server/.env` 中的 `DATABASE_URL`。
 

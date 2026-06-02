@@ -1,14 +1,16 @@
 -- ============================================================
 -- ToB 创始人 IP 深度定制系统 - PostgreSQL Schema
 -- 数据库：aichat
--- 扩展：pgcrypto, vector
+-- 扩展：pgcrypto
+-- 用法：psql -U aiuser -d aichat -f schema.sql
 -- ============================================================
 
 -- 1. 扩展安装
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
--- CREATE EXTENSION IF NOT EXISTS vector;  -- Windows 需手动安装 pgvector，暂禁用
 
+-- ============================================================
 -- 2. 用户表
+-- ============================================================
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     authing_id VARCHAR(255) UNIQUE NOT NULL,
@@ -17,20 +19,49 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(255),
     avatar_url TEXT,
     role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-    quota_minutes INT DEFAULT 60,
-    used_minutes INT DEFAULT 0,
+    -- 订阅制额度体系
+    subscription_start_at TIMESTAMPTZ,                    -- 订阅开始时间（首次登录自动设置）
+    subscription_days INT DEFAULT 7,                      -- 订阅时长（天）
+    token_quota BIGINT DEFAULT 100000,                    -- Token 额度上限
+    token_used BIGINT DEFAULT 0,                          -- 已消耗 Token 数
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_authing_id ON users(authing_id);
+CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
 COMMENT ON TABLE users IS '用户基础信息，与 Authing 身份源关联';
-COMMENT ON COLUMN users.authing_id IS 'Authing 用户 ID';
-COMMENT ON COLUMN users.role IS 'user=普通用户, admin=管理员';
+COMMENT ON COLUMN users.authing_id IS 'Authing 用户唯一标识';
+COMMENT ON COLUMN users.subscription_start_at IS '订阅开始时间，NULL 表示未开始计时';
+COMMENT ON COLUMN users.subscription_days IS '订阅时长（天），管理员可预设，admin 默认 99999';
+COMMENT ON COLUMN users.token_quota IS 'Token 使用额度上限，admin 默认 999999999';
+COMMENT ON COLUMN users.token_used IS '已消耗的 Token 数量';
 
--- 3. 对话会话表
+-- ============================================================
+-- 3. 用户画像表（核心业务数据）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    interview_data JSONB DEFAULT '{}',
+    information_report JSONB DEFAULT '{}',
+    positioning_report JSONB DEFAULT '{}',
+    copywriting_data JSONB DEFAULT '{}',
+    current_step VARCHAR(50) DEFAULT 'interview' CHECK (current_step IN ('interview', 'information', 'positioning', 'copywriting', 'history')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_step ON user_profiles(current_step);
+
+COMMENT ON TABLE user_profiles IS '创始人 IP 定制核心数据（访谈/信息/定位/文案）';
+
+-- ============================================================
+-- 4. 对话会话表（当前前端未使用，为将来扩展保留）
+-- ============================================================
 CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -45,9 +76,9 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status);
 
-COMMENT ON TABLE conversations IS '对话会话';
-
--- 4. 消息表
+-- ============================================================
+-- 5. 消息表（当前前端未使用，为将来扩展保留）
+-- ============================================================
 CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -64,30 +95,10 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
-CREATE INDEX IF NOT EXISTS idx_messages_model ON messages(model);
 
-COMMENT ON TABLE messages IS '对话消息';
-
--- 5. 用户画像表
-CREATE TABLE IF NOT EXISTS user_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    interview_data JSONB DEFAULT '{}',
-    information_report JSONB DEFAULT '{}',
-    positioning_report JSONB DEFAULT '{}',
-    copywriting_data JSONB DEFAULT '{}',
-    current_step VARCHAR(50) DEFAULT 'interview' CHECK (current_step IN ('interview', 'information', 'positioning', 'copywriting', 'history')),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user ON user_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_step ON user_profiles(current_step);
-
-COMMENT ON TABLE user_profiles IS '创始人 IP 定制核心数据';
-
--- 6. 知识库表
+-- ============================================================
+-- 6. 知识库表（RAG 数据源）
+-- ============================================================
 CREATE TABLE IF NOT EXISTS knowledge_base (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(500) NOT NULL,
@@ -107,10 +118,11 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
 CREATE INDEX IF NOT EXISTS idx_kb_category ON knowledge_base(category);
 CREATE INDEX IF NOT EXISTS idx_kb_created_by ON knowledge_base(created_by);
 
-COMMENT ON TABLE knowledge_base IS '知识库文档，用于 RAG';
-COMMENT ON COLUMN knowledge_base.embedding IS '文本向量嵌入（1536维），需 pgvector';
+COMMENT ON TABLE knowledge_base IS '知识库文档，用于 RAG 检索';
 
--- 7. 使用统计表
+-- ============================================================
+-- 7. 使用统计表（按日聚合）
+-- ============================================================
 CREATE TABLE IF NOT EXISTS usage_stats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -126,9 +138,9 @@ CREATE TABLE IF NOT EXISTS usage_stats (
 CREATE INDEX IF NOT EXISTS idx_usage_user_date ON usage_stats(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_date ON usage_stats(date);
 
-COMMENT ON TABLE usage_stats IS '按日聚合使用统计';
-
+-- ============================================================
 -- 8. 反馈表
+-- ============================================================
 CREATE TABLE IF NOT EXISTS feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -148,9 +160,9 @@ CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
 CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback(type);
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
 
-COMMENT ON TABLE feedback IS '用户反馈与工单';
-
+-- ============================================================
 -- 9. 触发器：自动更新 updated_at
+-- ============================================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -178,7 +190,9 @@ BEGIN
     END IF;
 END $$;
 
+-- ============================================================
 -- 10. 触发器：消息插入时更新对话 updated_at
+-- ============================================================
 CREATE OR REPLACE FUNCTION touch_conversation_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -194,7 +208,9 @@ BEGIN
     END IF;
 END $$;
 
+-- ============================================================
 -- 11. 行级安全策略（RLS）
+-- ============================================================
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
@@ -202,7 +218,7 @@ ALTER TABLE usage_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
 
--- 删除已存在的策略（避免重复创建错误）
+-- 删除已存在的策略（避免重复执行报错）
 DROP POLICY IF EXISTS user_conversations ON conversations;
 DROP POLICY IF EXISTS user_messages ON messages;
 DROP POLICY IF EXISTS user_profiles_isolation ON user_profiles;

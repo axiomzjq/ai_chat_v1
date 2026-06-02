@@ -13,7 +13,7 @@ router.get('/users', async (req, res, next) => {
     const result = await db.query(
       `SELECT id, authing_id, email, phone, display_name, avatar_url, role,
               subscription_start_at, subscription_days, token_quota, token_used,
-              quota_minutes, used_minutes, created_at
+              created_at
        FROM users
        ORDER BY created_at DESC`
     );
