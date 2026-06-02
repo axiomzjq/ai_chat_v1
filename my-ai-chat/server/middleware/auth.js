@@ -1,5 +1,4 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { AuthenticationClient } from 'authing-js-sdk';
 import { db } from '../db.js';
 
 const AUTHING_APP_HOST = process.env.AUTHING_APP_HOST;

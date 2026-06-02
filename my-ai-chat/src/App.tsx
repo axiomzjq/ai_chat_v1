@@ -702,6 +702,12 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
             >
               <Bug className="w-3 h-3" /> 导出调试日志
             </button>
+            <button
+              onClick={() => onDebugLogin?.(isAdmin)}
+              className="text-[10px] text-red-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1 font-bold"
+            >
+              🛠️ 调试：{isAdmin ? '管理员' : '用户'}一键登录 (17388978910)
+            </button>
           </div>
         )}
 
