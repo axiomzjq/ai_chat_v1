@@ -31,6 +31,14 @@ const AUTING_DOMAIN = import.meta.env.VITE_AUTHING_DOMAIN || '';
 const AUTING_USER_POOL_ID = import.meta.env.VITE_AUTHING_USER_POOL_ID || '';
 const AUTING_HOST = AUTING_DOMAIN ? `https://${AUTING_DOMAIN}` : '';
 
+console.log('[Auth] Env check:', {
+  appId: AUTING_APP_ID ? '***' + AUTING_APP_ID.slice(-6) : '(empty)',
+  domain: AUTING_DOMAIN || '(empty)',
+  host: AUTING_HOST || '(empty)',
+  userPoolId: AUTING_USER_POOL_ID ? '***' + AUTING_USER_POOL_ID.slice(-6) : '(empty)',
+  origin: typeof window !== 'undefined' ? window.location.origin : '(ssr)',
+});
+
 let authingClient: Authing | null = null;
 let authClient: AuthenticationClient | null = null;
 try {
@@ -47,11 +55,13 @@ try {
       appId: AUTING_APP_ID,
       appHost: AUTING_HOST,
     });
+    console.log('[Auth] Authing SDK initialized successfully');
   } else {
     console.warn('[Auth] Authing 未配置，请在 .env.local 中设置 VITE_AUTHING_APP_ID 和 VITE_AUTHING_DOMAIN');
   }
-} catch (err) {
-  console.error('Authing init failed:', err);
+} catch (err: any) {
+  console.error('[Auth] Authing init failed:', err?.message || err);
+  console.error('[Auth] Stack:', err?.stack);
 }
 
 export type FirebaseUser = {

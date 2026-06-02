@@ -50,7 +50,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AUTHING_APP_ID, AUTHING_HOST } from './lib/authing';
 import * as api from './lib/api';
-import { exportLogs, clearLogs } from './lib/logger';
+import { exportLogs, clearLogs, copyToClipboard } from './lib/logger';
 import { DEBUG_MODE } from './lib/debug';
 import { 
   auth,
@@ -693,9 +693,10 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
         {DEBUG_MODE && (
           <div className="flex flex-col gap-2 mt-2">
             <button
-              onClick={() => {
+              onClick={async () => {
                 const logs = exportLogs();
-                navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板，请粘贴给开发者'));
+                const ok = await copyToClipboard(logs);
+                alert(ok ? '日志已复制到剪贴板，请粘贴给开发者' : '复制失败，请手动全选复制');
               }}
               className="text-[10px] text-gray-400 hover:text-amber-600 transition-colors flex items-center justify-center gap-1"
             >
@@ -3757,9 +3758,10 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const logs = exportLogs();
-                      navigator.clipboard.writeText(logs).then(() => alert('日志已复制到剪贴板'));
+                      const ok = await copyToClipboard(logs);
+                      alert(ok ? '日志已复制到剪贴板' : '复制失败，请手动全选复制');
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors"
                   >
