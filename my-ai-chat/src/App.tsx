@@ -719,7 +719,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
   );
 }
 
-function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => void }) {
+function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLogout: () => void, onDebugLogin?: () => void }) {
   const [activeTab, setActiveTab] = useState<'users' | 'feedback' | 'knowledge'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [phoneSearch, setPhoneSearch] = useState('');
@@ -939,6 +939,26 @@ function AdminPanel({ user, onLogout }: { user: UserProfile, onLogout: () => voi
               <p className="text-[10px] text-gray-400 uppercase font-bold">超级管理员</p>
             </div>
           </div>
+          {DEBUG_MODE && (
+            <div className="flex flex-col gap-2 mb-3">
+              <button
+                onClick={async () => {
+                  const logs = exportLogs();
+                  const ok = await copyToClipboard(logs);
+                  alert(ok ? '日志已复制到剪贴板' : '复制失败，请手动全选复制');
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2 rounded-xl font-bold text-[10px] text-amber-600 hover:bg-amber-50 transition-all"
+              >
+                <Bug size={14} /> 导出调试日志
+              </button>
+              <button
+                onClick={() => onDebugLogin?.()}
+                className="w-full flex items-center gap-3 px-4 py-2 rounded-xl font-bold text-[10px] text-red-500 hover:bg-red-50 transition-all"
+              >
+                🛠️ 调试：一键回到登录页
+              </button>
+            </div>
+          )}
           <button 
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-red-500 hover:bg-red-50 transition-all"
@@ -3387,7 +3407,16 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
   }
 
   if (state.view === 'admin' && state.user) {
-    return <AdminPanel user={state.user} onLogout={handleLogout} />;
+    return (
+      <AdminPanel
+        user={state.user}
+        onLogout={handleLogout}
+        onDebugLogin={() => {
+          // 调试：重置到登录页
+          setState(initialState);
+        }}
+      />
+    );
   }
 
   return (
