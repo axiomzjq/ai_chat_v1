@@ -29,7 +29,10 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 const CORS_ORIGINS = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
-  : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'];
+  : [
+      'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176',
+      'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:5175', 'http://127.0.0.1:5176',
+    ];
 
 // 开发环境：如果 NODE_ENV 不是 production，额外允许 frp-air.com 及其所有子域名、任意端口
 if (process.env.NODE_ENV !== 'production') {
