@@ -2,7 +2,7 @@
 const requestMap = new Map(); // userId -> [timestamps]
 
 const LIMITS = {
-  message: { windowMs: 60 * 1000, max: 10 },      // 10 req/min
+  message: { windowMs: 60 * 1000, max: 20 },      // 20 req/min
   upload: { windowMs: 60 * 1000, max: 5 },         // 5 req/min
   search: { windowMs: 60 * 1000, max: 20 },        // 20 req/min
   default: { windowMs: 60 * 1000, max: 60 },       // 60 req/min

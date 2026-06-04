@@ -57,7 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/conversations', authMiddleware, rateLimitMiddleware('default'), conversationRoutes);
 app.use('/api/conversations/:id/messages', authMiddleware, rateLimitMiddleware('message'), messageRoutes);
 app.use('/api/user/profile', authMiddleware, rateLimitMiddleware('default'), profileRoutes);
-app.use('/api/knowledge-base', authMiddleware, rateLimitMiddleware('upload'), knowledgeBaseRoutes);
+app.use('/api/knowledge-base', authMiddleware, rateLimitMiddleware('default'), knowledgeBaseRoutes);
 app.use('/api/usage', authMiddleware, rateLimitMiddleware('default'), usageRoutes);
 app.use('/api/feedback', authMiddleware, rateLimitMiddleware('default'), feedbackRoutes);
 app.use('/api/admin', rateLimitMiddleware('default'), adminRoutes); // adminRoutes 内部已包含 authMiddleware + requireAdmin
