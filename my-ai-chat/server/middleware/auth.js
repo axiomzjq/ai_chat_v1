@@ -21,17 +21,33 @@ function getJwks() {
  * 验证 Token（优先 JWKS 验签，失败时调用 Authing GraphQL API 验证）
  */
 async function verifyJwt(token) {
-  // 方案 1：JWKS 验签（适用于 @authing/web 的 OIDC id_token）
-  try {
-    const keySet = getJwks();
-    if (keySet) {
-      const { payload } = await jwtVerify(token, keySet, {
-        clockTolerance: 60,
-      });
-      return payload;
+  // 分析 token 格式
+  const parts = token.split('.');
+  let header = null;
+  if (parts.length === 3) {
+    try {
+      header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+    } catch { /* ignore */ }
+  }
+
+  // 方案 1：JWKS 验签（仅对 RS256/ES256 等非对称算法有效）
+  // Authing 的 access token 通常是 HS256（对称加密），JWKS 中只有 RS256 公钥，所以 HS256 token 直接跳过 JWKS
+  const isAsymmetric = header && ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512', 'PS256', 'PS384', 'PS512', 'EdDSA'].includes(header.alg);
+  if (isAsymmetric) {
+    try {
+      const keySet = getJwks();
+      if (keySet) {
+        const { payload } = await jwtVerify(token, keySet, { clockTolerance: 60 });
+        console.log('[Auth] JWKS verify success, sub:', payload.sub);
+        return payload;
+      }
+    } catch (err) {
+      console.log('[Auth] JWKS verify failed, trying GraphQL fallback:', err.message);
     }
-  } catch (err) {
-    console.log('[Auth] JWKS verify failed, trying GraphQL fallback:', err.message);
+  } else if (header) {
+    console.log('[Auth] Token alg is', header.alg, '- skipping JWKS, using GraphQL fallback directly');
+  } else {
+    console.log('[Auth] Token is not JWT - skipping JWKS, using GraphQL fallback directly');
   }
 
   // 方案 2：Authing GraphQL v2 API（和前端 authing-js-sdk 用同一套接口）
@@ -46,6 +62,7 @@ async function verifyJwt(token) {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'x-authing-app-id': AUTHING_APP_ID,
       },
       body: JSON.stringify({
         query: `
@@ -193,11 +210,9 @@ export async function authMiddleware(req, res, next) {
     }
 
     // 设置 PostgreSQL 会话变量（用于 RLS）
-    // 使用参数化方式：先做一次安全的字符串转义
-    const safeUserId = String(user.id).replace(/[^a-zA-Z0-9_-]/g, '');
-    const safeUserRole = String(user.role).replace(/[^a-zA-Z0-9_-]/g, '');
-    await db.query(`SET "app.current_user" = '${safeUserId}'`);
-    await db.query(`SET "app.current_user_role" = '${safeUserRole}'`);
+    // 使用 set_config 函数 + 参数化查询，避免 SQL 注入和配置参数不存在的问题
+    await db.query(`SELECT set_config('app.current_user', $1, false)`, [user.id]);
+    await db.query(`SELECT set_config('app.current_user_role', $1, false)`, [user.role]);
 
     req.user = user;
     req.isNewUser = isNewUser;

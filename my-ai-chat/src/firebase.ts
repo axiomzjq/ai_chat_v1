@@ -81,11 +81,30 @@ export type FirebaseUser = {
 
 let _currentUser: FirebaseUser | null = null;
 
+const AUTH_CACHE_KEY = 'firebase_user_cache';
+
 function setCurrentUser(user: FirebaseUser | null) {
   _currentUser = user;
+  // 持久化到 localStorage，刷新后可恢复
+  if (user) {
+    localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(AUTH_CACHE_KEY);
+  }
   // 触发所有监听器
   _authListeners.forEach(cb => cb(user));
 }
+
+// 页面刷新时：尝试从 localStorage 恢复登录状态
+(function restoreAuthState() {
+  if (typeof window === 'undefined') return;
+  const cached = localStorage.getItem(AUTH_CACHE_KEY);
+  if (cached) {
+    try {
+      _currentUser = JSON.parse(cached);
+    } catch { /* ignore corrupt cache */ }
+  }
+})();
 
 const _authListeners = new Set<(user: FirebaseUser | null) => void>();
 

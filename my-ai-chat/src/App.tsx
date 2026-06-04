@@ -441,6 +441,16 @@ const CollapsibleMarkdown = ({ content }: { content: string }) => {
   );
 };
 
+const UI_STATE_KEY = 'ai_chat_ui_state';
+
+function loadUIState(): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(UI_STATE_KEY) : null;
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { currentStep: 'interview', isStarted: false, lastView: null, adminActiveTab: 'users' };
+}
+
 const initialState: AppState = {
   interviewPhase: 'basic',
   interviewReport: '',
@@ -635,6 +645,36 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
         </div>
 
         <div className="bg-gray-50 p-8 rounded-[40px] border border-gray-100 space-y-6">
+          {/* Tab 切换 */}
+          <div className="flex bg-gray-200 rounded-2xl p-1">
+            <button
+              type="button"
+              onClick={() => setIsAdmin(false)}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+                !isAdmin
+                  ? 'bg-black text-white shadow-lg shadow-black/10'
+                  : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <User size={16} /> 用户登录
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdmin(true)}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+                isAdmin
+                  ? 'bg-black text-white shadow-lg shadow-black/10'
+                  : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <ShieldCheck size={16} /> 管理员登录
+              </span>
+            </button>
+          </div>
+
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-2 text-left">
               <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-2">手机号码</label>
@@ -679,15 +719,6 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
               {isAdmin ? '管理员登录' : '登录 / 注册'}
             </button>
           </form>
-          
-          <div className="flex flex-col gap-4">
-            <button 
-              onClick={() => setIsAdmin(!isAdmin)}
-              className="w-full text-sm font-bold text-gray-500 hover:text-black transition-colors"
-            >
-              切换到{isAdmin ? '用户登录' : '管理登录'}
-            </button>
-          </div>
         </div>
 
         {DEBUG_MODE && (
@@ -720,7 +751,13 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
 }
 
 function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLogout: () => void, onDebugLogin?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'users' | 'feedback' | 'knowledge'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'feedback' | 'knowledge'>(() => loadUIState().adminActiveTab);
+
+  useEffect(() => {
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    const saved = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({ ...saved, adminActiveTab: activeTab }));
+  }, [activeTab]);
   const [users, setUsers] = useState<any[]>([]);
   const [phoneSearch, setPhoneSearch] = useState('');
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
@@ -1361,11 +1398,12 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
 }
 
 export default function App() {
-  const [isStarted, setIsStarted] = useState(false);
+  const _uiState = loadUIState();
+  const [isStarted, setIsStarted] = useState(_uiState.isStarted);
   const [showGuide, setShowGuide] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [currentStep, setCurrentStep] = useState<Step>('interview');
+  const [currentStep, setCurrentStep] = useState<Step>(_uiState.currentStep);
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
     let parsedHistory: HistoryItem[] = [];
@@ -1386,6 +1424,18 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('founder_ip_history', JSON.stringify(state.history));
   }, [state.history]);
+
+  // UI 状态持久化：刷新后记住页面位置
+  useEffect(() => {
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    const saved = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+      ...saved,
+      currentStep,
+      isStarted,
+      lastView: state.view === 'login' ? saved.lastView : state.view,
+    }));
+  }, [currentStep, isStarted, state.view]);
 
   // Auth State
   useEffect(() => {
@@ -1408,10 +1458,16 @@ export default function App() {
                 tokenUsed: res.user.token_used ?? 0,
                 createdAt: new Date(res.user.created_at),
               };
-              setState(prev => ({ 
-                ...prev, 
-                user: profile, 
-                view: profile.role === 'admin' && state.isAdminLogin ? 'admin' : 'app' 
+              const savedView = loadUIState().lastView;
+              // 管理员：有上次记录且明确在 app 就回 app，否则默认进 admin
+              // 普通用户：一律进 app
+              const targetView = profile.role === 'admin'
+                ? (savedView === 'app' ? 'app' : 'admin')
+                : 'app';
+              setState(prev => ({
+                ...prev,
+                user: profile,
+                view: targetView,
               }));
             }
           }
@@ -1472,7 +1528,20 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      // 登出时清除认证缓存和页面位置
+      localStorage.removeItem('authing_access_token');
+      localStorage.removeItem('firebase_user_cache');
+      const raw = localStorage.getItem(UI_STATE_KEY);
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw);
+          saved.lastView = null;
+          localStorage.setItem(UI_STATE_KEY, JSON.stringify(saved));
+        } catch { /* ignore */ }
+      }
       setState(initialState);
+      setCurrentStep('interview');
+      setIsStarted(false);
     } catch (error) {
       console.error("Logout error:", error);
     }
