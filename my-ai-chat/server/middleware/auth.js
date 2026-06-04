@@ -194,7 +194,8 @@ export async function authMiddleware(req, res, next) {
         user = result.rows[0];
         isNewUser = true;
 
-        // 初始化用户画像
+        // 初始化用户画像：先设置 RLS 上下文再插入
+        await db.query(`SELECT set_config('app.current_user', $1, false)`, [user.id]);
         await db.query(
           'INSERT INTO user_profiles (user_id) VALUES ($1)',
           [user.id]

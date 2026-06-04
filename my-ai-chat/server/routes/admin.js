@@ -46,8 +46,10 @@ router.post('/users/precreated', async (req, res, next) => {
       [`precreated:${phone}`, phone, role, parseInt(subscription_days) || 7, parseInt(token_quota) || 100000]
     );
 
-    // 初始化用户画像
+    // 初始化用户画像：临时切换 RLS 上下文为新用户，插入后恢复
+    await db.query(`SELECT set_config('app.current_user', $1, false)`, [result.rows[0].id]);
     await db.query('INSERT INTO user_profiles (user_id) VALUES ($1)', [result.rows[0].id]);
+    await db.query(`SELECT set_config('app.current_user', $1, false)`, [req.user.id]);
 
     res.json({ code: 0, message: 'success', data: result.rows[0] });
   } catch (err) {
