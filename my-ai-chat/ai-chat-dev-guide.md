@@ -288,3 +288,81 @@ npm config set registry https://registry.npmmirror.com
 | 第 5-6 天 | 接入 Claude API，跑通对话 |
 | 第 7-10 天 | 拆组件、加样式、做角色选择 |
 | 第 11-14 天 | 部署到 Vercel 上线 |
+
+---
+
+## 附录：服务器 PM2 运维指南
+
+> 以下命令在服务器环境使用，用于守护前后端进程，确保服务稳定运行。
+
+### 安装 PM2
+
+```bash
+sudo npm install -g pm2
+```
+
+### 将服务加入 PM2
+
+```bash
+cd /path/to/ai_chat_v1/my-ai-chat/server
+pm2 start index.js --name "ai-chat-backend"
+
+cd /path/to/ai_chat_v1/my-ai-chat
+pm2 start "npm run dev" --name "ai-chat-frontend"
+
+# 保存配置，开机自启
+pm2 save
+pm2 startup
+```
+
+### 常用检查指令
+
+| 操作 | 命令 |
+|------|------|
+| 查看所有进程状态 | `pm2 status` |
+| 查看后端实时日志 | `pm2 logs ai-chat-backend` |
+| 查看前端实时日志 | `pm2 logs ai-chat-frontend` |
+| 重启后端 | `pm2 restart ai-chat-backend` |
+| 重启前端 | `pm2 restart ai-chat-frontend` |
+| 重启全部 | `pm2 restart all` |
+| 停止全部 | `pm2 stop all` |
+| 删除进程 | `pm2 delete ai-chat-backend` |
+
+### PostgreSQL 检查
+
+```bash
+# 查看状态
+sudo systemctl status postgresql-16
+
+# 重启
+sudo systemctl restart postgresql-16
+```
+
+### 一键健康检查脚本
+
+项目已内置检查脚本，执行即可查看所有服务状态：
+
+```bash
+cd /path/to/ai_chat_v1/my-ai-chat
+./scripts/check-services.sh
+```
+
+输出示例（全部正常）：
+
+```
+========================================
+  AI Chat 服务健康检查
+========================================
+
+[1/5] PostgreSQL 16      ... ✓ 运行中
+[2/5] PM2 后端服务      ... ✓ 运行中 (online)
+[3/5] PM2 前端服务      ... ✓ 运行中 (online)
+[4/5] 端口 3001/5173    ... ✓ 正常监听
+[5/5] HTTP 健康检查     ... ✓ 后端+前端均正常
+
+========================================
+  检查结果: 全部正常
+========================================
+```
+
+如果发现问题，脚本会自动提示修复命令。
