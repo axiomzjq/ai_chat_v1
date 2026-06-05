@@ -1453,9 +1453,9 @@ export default function App() {
                 phone: res.user.phone || null,
                 role: res.user.role,
                 subscriptionStartAt: res.user.subscription_start_at || null,
-                subscriptionDays: res.user.subscription_days ?? 7,
-                tokenQuota: res.user.token_quota ?? 100000,
-                tokenUsed: res.user.token_used ?? 0,
+                subscriptionDays: Number(res.user.subscription_days) || 7,
+                tokenQuota: Number(res.user.token_quota) || 100000,
+                tokenUsed: Number(res.user.token_used) || 0,
                 createdAt: new Date(res.user.created_at),
               };
               const savedView = loadUIState().lastView;
@@ -1495,8 +1495,8 @@ export default function App() {
             ...prev,
             user: prev.user ? {
               ...prev.user,
-              tokenUsed: res.data.tokens.used,
-              tokenQuota: res.data.tokens.quota,
+              tokenUsed: Number(res.data.tokens.used) || 0,
+              tokenQuota: Number(res.data.tokens.quota) || 0,
             } : null,
           }));
         }
@@ -1553,7 +1553,9 @@ export default function App() {
     if (state.user.role === 'admin') return { ok: true };
 
     // Token 检查
-    if (state.user.tokenUsed >= state.user.tokenQuota) {
+    const tokenUsed = Number(state.user.tokenUsed) || 0;
+    const tokenQuota = Number(state.user.tokenQuota) || 0;
+    if (tokenUsed >= tokenQuota) {
       return { ok: false, message: '您的 Token 额度已用完，请联系管理员续期。' };
     }
 
