@@ -2215,10 +2215,27 @@ ${relevantKnowledge}`,
             </div>
 
             <div className="p-4 md:p-6 bg-gray-50/50 border-t border-gray-100">
+              {DEBUG_MODE && state.user && state.user.role !== 'admin' && (
+                <div className="mb-3 px-1">
+                  <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-mono">
+                    <span>Token: {state.user.tokenUsed?.toLocaleString()} / {state.user.tokenQuota?.toLocaleString()}</span>
+                    <span>{Math.round(((state.user.tokenUsed || 0) / (state.user.tokenQuota || 1)) * 100)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        (state.user.tokenUsed || 0) / (state.user.tokenQuota || 1) > 0.9 ? 'bg-red-500' :
+                        (state.user.tokenUsed || 0) / (state.user.tokenQuota || 1) > 0.7 ? 'bg-amber-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min(100, ((state.user.tokenUsed || 0) / (state.user.tokenQuota || 1)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="relative flex items-center gap-2">
                 <div className="relative flex-1">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
