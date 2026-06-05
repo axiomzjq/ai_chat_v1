@@ -303,8 +303,9 @@ function StepIndicator({ currentStep, onStepClick, state }: {
   ];
 
   const isStepUnlocked = (stepId: Step) => {
-    // 2025-05-22 调整：支持任意页面跳转，阶段解锁不再依赖前置报告
-    return true;
+    // 访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
+    if (stepId === 'interview' || stepId === 'history') return true;
+    return !!state.interviewReport;
   };
 
   return (
@@ -2157,8 +2158,19 @@ ${relevantKnowledge}`,
                 <h2 className="font-semibold text-sm md:text-base">访谈顾问：挖掘个人故事</h2>
               </div>
               <button 
-                onClick={() => setCurrentStep('information')}
-                className="flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold text-black hover:gap-2 md:hover:gap-3 transition-all"
+                onClick={() => {
+                  if (isStepUnlocked('information')) {
+                    setCurrentStep('information');
+                  } else {
+                    alert('请先完成访谈并生成深度报告');
+                  }
+                }}
+                className={cn(
+                  "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
+                  isStepUnlocked('information')
+                    ? "text-black hover:gap-2 md:hover:gap-3"
+                    : "text-gray-300 cursor-not-allowed"
+                )}
               >
                 下一步 <ChevronRight className="w-4 h-4" />
               </button>
@@ -2266,18 +2278,18 @@ ${relevantKnowledge}`,
                 </div>
                 {!state.interviewReport && !isGeneratingDetailedReport && messages.length > 1 && (
                   <div className="flex flex-col gap-2">
-                    {messages.length < 6 ? (
+                    {!canEndInterview() ? (
                       <p className="text-[10px] md:text-xs text-gray-400 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，继续深入交流可获得更丰富的报告
+                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，至少完成 15 轮或等待 AI 结束提示后方可生成报告
                       </p>
                     ) : (
                       <p className="text-[10px] md:text-xs text-amber-600 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话。您可以继续深入交流，或点击下方按钮生成报告。
+                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，可以生成深度报告了
                       </p>
                     )}
                     <button
                       onClick={() => generateDetailedInterviewReport()}
-                      disabled={messages.length < 6}
+                      disabled={!canEndInterview()}
                       className="px-4 py-3 bg-amber-500 text-white rounded-xl md:rounded-2xl hover:bg-amber-600 transition-all shadow-md text-xs md:text-sm font-bold flex items-center gap-2 whitespace-nowrap disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
                     >
                       <Sparkles size={16} /> 生成深度报告
@@ -3073,6 +3085,14 @@ ${relevantKnowledge}`,
     }
   };
 
+  const canEndInterview = () => {
+    const rounds = Math.floor((messages.length - 1) / 2);
+    const aiSaidEnd = messages.some(m =>
+      m.role === 'model' && m.text.includes('<!-- INTERVIEW_ENDED_BY_AI -->')
+    );
+    return rounds >= 15 || aiSaidEnd;
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim() || isTyping) return;
 
@@ -3120,6 +3140,16 @@ ${knowledgeContext}` : ""),
         },
         onDone: (_fullText, usage) => {
           if (usage) reportTokenUsage(usage);
+          // 检测 AI 是否说了结束语，若包含则给最后一条 model 消息打标记
+          if (_fullText.includes('访谈已圆满结束')) {
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'model' && !last.text.includes('<!-- INTERVIEW_ENDED_BY_AI -->')) {
+                return [...prev.slice(0, -1), { ...last, text: last.text + '\n\n<!-- INTERVIEW_ENDED_BY_AI -->' }];
+              }
+              return prev;
+            });
+          }
           setIsTyping(false);
         },
         onError: (err) => {
@@ -3600,21 +3630,27 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             { id: 'positioning', label: '定位', icon: Target },
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
-          ].map((step) => (
-            <button
-              key={step.id}
-              onClick={() => setCurrentStep(step.id as Step)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all",
-                currentStep === step.id 
-                  ? "bg-white text-black shadow-sm" 
-                  : "text-gray-400 hover:text-black"
-              )}
-            >
-              <step.icon size={14} />
-              {step.label}
-            </button>
-          ))}
+          ].map((step) => {
+            const unlocked = isStepUnlocked(step.id as Step);
+            return (
+              <button
+                key={step.id}
+                onClick={() => unlocked && setCurrentStep(step.id as Step)}
+                disabled={!unlocked}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                  currentStep === step.id
+                    ? "bg-white text-black shadow-sm"
+                    : unlocked
+                      ? "text-gray-400 hover:text-black"
+                      : "text-gray-300 cursor-not-allowed"
+                )}
+              >
+                <step.icon size={14} />
+                {step.label}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
