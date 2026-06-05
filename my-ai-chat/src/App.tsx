@@ -721,7 +721,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
           </form>
         </div>
 
-        {DEBUG_MODE && (
+        {DEBUG_MODE !== 'off' && (
           <div className="flex flex-col gap-2 mt-2">
             <button
               onClick={async () => {
@@ -733,12 +733,14 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
             >
               <Bug className="w-3 h-3" /> 导出调试日志
             </button>
-            <button
-              onClick={() => onDebugLogin?.(isAdmin)}
-              className="text-[10px] text-red-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1 font-bold"
-            >
-              🛠️ 调试：{isAdmin ? '管理员' : '用户'}一键登录 (17388978910)
-            </button>
+            {DEBUG_MODE === 'dev' && (
+              <button
+                onClick={() => onDebugLogin?.(isAdmin)}
+                className="text-[10px] text-red-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1 font-bold"
+              >
+                🛠️ 调试：{isAdmin ? '管理员' : '用户'}一键登录 (17388978910)
+              </button>
+            )}
           </div>
         )}
 
@@ -976,7 +978,7 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
               <p className="text-[10px] text-gray-400 uppercase font-bold">超级管理员</p>
             </div>
           </div>
-          {DEBUG_MODE && (
+          {DEBUG_MODE !== 'off' && (
             <div className="flex flex-col gap-2 mb-3">
               <button
                 onClick={async () => {
@@ -988,12 +990,14 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
               >
                 <Bug size={14} /> 导出调试日志
               </button>
-              <button
-                onClick={() => onDebugLogin?.()}
-                className="w-full flex items-center gap-3 px-4 py-2 rounded-xl font-bold text-[10px] text-red-500 hover:bg-red-50 transition-all"
-              >
-                🛠️ 调试：一键回到登录页
-              </button>
+              {DEBUG_MODE === 'dev' && (
+                <button
+                  onClick={() => onDebugLogin?.()}
+                  className="w-full flex items-center gap-3 px-4 py-2 rounded-xl font-bold text-[10px] text-red-500 hover:bg-red-50 transition-all"
+                >
+                  🛠️ 调试：一键回到登录页
+                </button>
+              )}
             </div>
           )}
           <button 
@@ -2215,7 +2219,7 @@ ${relevantKnowledge}`,
             </div>
 
             <div className="p-4 md:p-6 bg-gray-50/50 border-t border-gray-100">
-              {DEBUG_MODE && state.user && state.user.role !== 'admin' && (
+              {DEBUG_MODE !== 'off' && state.user && state.user.role !== 'admin' && (
                 <div className="mb-3 px-1">
                   <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-mono">
                     <span>Token: {state.user.tokenUsed?.toLocaleString()} / {state.user.tokenQuota?.toLocaleString()}</span>
@@ -3626,7 +3630,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           >
             联系专家
           </button>
-          {DEBUG_MODE && (
+          {DEBUG_MODE !== 'off' && (
             <>
               <button
                 onClick={() => setShowLogs(true)}
@@ -3665,7 +3669,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
           >
             <Phone className="w-5 h-5 text-white" />
           </button>
-          {DEBUG_MODE && (
+          {DEBUG_MODE !== 'off' && (
             <button
               onClick={() => setShowLogs(true)}
               className="p-2 bg-gray-50 rounded-lg"

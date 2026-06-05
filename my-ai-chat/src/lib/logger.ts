@@ -3,7 +3,7 @@
  * 收集 console.log/error/warn、网络请求、未捕获异常，支持一键导出
  *
  * 控制开关在 src/lib/debug.ts 中的 DEBUG_MODE。
- * 设为 false 时，本模块完全不执行任何拦截，浏览器原生行为不变。
+ * 设为 'off' 时，本模块完全不执行任何拦截，浏览器原生行为不变。
  */
 
 import { DEBUG_MODE } from './debug';
@@ -55,9 +55,9 @@ function pushLog(type: LogEntry['type'], args: any[]) {
   fn.apply(console, args);
 }
 
-// ==================== 拦截器初始化（仅在 DEBUG_MODE 时执行） ====================
+// ==================== 拦截器初始化（仅在 DEBUG_MODE 不为 'off' 时执行） ====================
 
-if (DEBUG_MODE) {
+if (DEBUG_MODE !== 'off') {
   // 保存原始方法
   const _origLog = console.log;
   const _origError = console.error;
