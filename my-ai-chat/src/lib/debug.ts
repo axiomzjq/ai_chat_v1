@@ -9,7 +9,7 @@
  *   'off'      — 关闭所有调试功能，浏览器原生 console 行为完全恢复
  */
 
-export const DEBUG_MODE: 'dev' | 'internal' | 'off' = 'internal';
+export const DEBUG_MODE: 'dev' | 'internal' | 'off' = 'dev';
 
 /**
  * 调试用具：只在 DEBUG_MODE 不为 'off' 时执行
