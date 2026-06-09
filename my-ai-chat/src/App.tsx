@@ -67,6 +67,12 @@ import {
 // --- Types ---
 
 type Step = 'interview' | 'information' | 'positioning' | 'copywriting' | 'history';
+
+// 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
+const isStepUnlocked = (stepId: Step, interviewReport: string) => {
+  if (stepId === 'interview' || stepId === 'history') return true;
+  return !!interviewReport;
+};
 type View = 'login' | 'app' | 'admin';
 
 interface UserProfile {
@@ -302,11 +308,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
     { id: 'history', label: '历史', icon: CheckCircle2 },
   ];
 
-  const isStepUnlocked = (stepId: Step) => {
-    // 访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-    if (stepId === 'interview' || stepId === 'history') return true;
-    return !!state.interviewReport;
-  };
+
 
   return (
     <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-8 md:mb-12 px-2 md:px-4 overflow-x-auto no-scrollbar py-2">
@@ -314,7 +316,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
         const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id);
+        const unlocked = isStepUnlocked(step.id, state.interviewReport);
 
         return (
           <React.Fragment key={step.id}>
@@ -2159,7 +2161,7 @@ ${relevantKnowledge}`,
               </div>
               <button 
                 onClick={() => {
-                  if (isStepUnlocked('information')) {
+                  if (isStepUnlocked('information', state.interviewReport)) {
                     setCurrentStep('information');
                   } else {
                     alert('请先完成访谈并生成深度报告');
@@ -2167,7 +2169,7 @@ ${relevantKnowledge}`,
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('information')
+                  isStepUnlocked('information', state.interviewReport)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -3631,7 +3633,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step);
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport);
             return (
               <button
                 key={step.id}
