@@ -1,0 +1,66 @@
+flowchart TD
+%% ========== 样式 ==========
+classDef phase fill:#F6F2D8,stroke:#CFC89A,color:#333,stroke-width:1px;
+classDef action fill:#E9E3F8,stroke:#B8ADD8,color:#333,stroke-width:1px;
+classDef decision fill:#E3DCF6,stroke:#B8ADD8,color:#333,stroke-width:1px;
+classDef output fill:#EAF5E6,stroke:#A8C79B,color:#333,stroke-width:1px;
+
+START([开始]):::output --> A1
+
+%% ========== 阶段1 ==========
+subgraph P1["阶段一：上游承接与模式识别"]
+    direction TB
+    A1["执行节点：读取上游输入并完成模式识别<br/><br/>执行内容：<br/>1. 读取第一阶段访谈结果、第二阶段定位报告、阶段规划框架、用户资料与内容资产、历史素材库、用户反馈记录、已使用选题记录<br/>2. 锁定主路线与表达约束：route_type / route_confidence / route_evidence / secondary_route_type / route_final_decision<br/>3. 锁定表达主场：primary_expression_arena / main_route_expression_rule / secondary_route_usage_note / mixed_expression_risk<br/>4. 自动挂载对应创作技巧库：ToB → ToB 技巧库；ToC → ToC 技巧库；缺库则标记 fallback<br/>5. 识别运行模式：initial_plan / dynamic_maintenance"]:::action
+    D1{"主路线、表达主场、技巧库挂载与运行模式是否已足够明确？"}:::decision
+end
+A1 --> D1
+D1 -- "否：路线模糊 / 表达主场不清 / route evidence 不足 / 技巧库不匹配" --> A1
+D1 -- "是：首次详细规划" --> B1
+D1 -- "是：动态维护" --> D1M
+
+%% ========== 阶段2 ==========
+subgraph P2["阶段二：详细阶段规划与选题扩写"]
+    direction TB
+    B1["执行节点：按阶段完成详细规划与选题扩写<br/><br/>执行内容：<br/>1. 读取阶段规划框架：stage_id / stage_name / stage_goal / stage_target_audience / stage_content_focus / stage_conversion_role / stage_platform_bias / stage_not_recommended_types<br/>2. 按阶段生成详细选题池：每阶段 ≥ 30 条，严格服从主路线与表达主场<br/>3. 每条题升级为详细选题对象：topic_id / topic_title / one_line_desc / 爆款类型 / 爆点 / 核心冲突 / 3秒钩子 / 开头 / 收尾 / 互动引导 / 转化引导 / 平台建议 / 形式建议 / 优先级 / 来源证据<br/>4. 按内容用途排序：爆款优先 / 转化优先 / 信任优先 / 教育优先 / 平衡补充 / 替补补货"]:::action
+    D2{"阶段框架与详细选题对象是否已足够清晰、完整，可进入质检？"}:::decision
+end
+B1 --> D2
+D2 -- "否：阶段目标不清 / 受众不清 / 单题字段不完整 / 排序混乱" --> B1
+D2 -- "是" --> C1
+
+%% ========== 阶段3 ==========
+subgraph P3["阶段三：过程质检与结果放行"]
+    direction TB
+    C1["执行节点：完成过程质检与结果放行判断<br/><br/>执行内容：<br/>1. 检查路线一致性、阶段目标一致性、用户画像贴合度、用户反馈执行度、补货逻辑是否正确<br/>2. 检查单题字段完整度：是否缺钩子 / 开头 / 收尾 / 平台建议 / 形式建议 / 互动设计 / 转化设计 / 来源依据<br/>3. 检查重复与模板化：换词同题 / 同质结构 / 标题不同但本质重复<br/>4. 生成修正动作：revise / replace / refill / de-duplicate / regenerate_partial / hold_for_feedback"]:::action
+    D3{"当前结果是否通过质检，形成可交付选题结果？"}:::decision
+end
+C1 --> D3
+D3 -- "否：需 revise / replace / regenerate_partial" --> B1
+D3 -- "否：需 de-duplicate" --> B1
+D3 -- "否：需 refill / hold_for_feedback" --> D1M
+D3 -- "是" --> E1
+
+%% ========== 阶段4 ==========
+subgraph P4["阶段四：动态维护、题池治理与自动补货"]
+    direction TB
+    D1M["执行节点：处理动态维护、题池治理与自动补货<br/><br/>执行内容：<br/>1. 接收用户反馈：删除 / 改写 / 补新题 / 换方向 / 调整优先级 / 设定禁区 / 强化某类题型<br/>2. 识别反馈动作类型：delete_topic / rewrite_topic / replace_topic / add_topic / reprioritize_topic / ban_topic_type<br/>3. 同步第四阶段已使用题记录：topic_id / used_at / script_request_id / stage_tag / status / script_destination<br/>4. 将已使用题移出当前规划池，同时写入已使用池 / 历史池 / 归档记录<br/>5. 监控题池健康度：当前规划池 / 替补池 / 已使用池 / 历史池 / 安全阈值 / 结构性缺题<br/>6. 若低于阈值，自动补货：同阶段补货 / 同路线补货 / 同内容任务补货 / 不改变原阶段目标"]:::action
+    D4{"当前是否已完成本轮维护，可继续进入结果输出？"}:::decision
+end
+D1M --> D4
+D4 -- "否：反馈未处理完 / 题池不健康 / 补货失败" --> D1M
+D4 -- "否：需要重做阶段规划或改单题" --> B1
+D4 -- "是" --> E1
+
+%% ========== 阶段5 ==========
+subgraph P5["阶段五：结果输出、handoff 与复盘回流"]
+    direction TB
+    E1["执行节点：输出结果、下发 handoff、记录版本并建立复盘回流<br/><br/>执行内容：<br/>1. 输出用户可见结果：阶段摘要 / 重点推荐题 / 替补题建议 / 本轮改动说明 / 用户反馈执行结果 / 已使用题同步结果<br/>2. 输出系统可用结果：topic_pool_records / topic_status_changes / change_log / refill_hint / used_topic_log / revision_count / batch_id / session_id / updated_at<br/>3. 向第四阶段文案智能体下发 handoff 包：当前可用题池 / 单题完整字段 / 优先级 / 阶段归属 / 路线归属 / 平台建议 / 形式建议 / 互动设计 / 转化设计 / 禁区说明<br/>4. 记录版本、批次与变更日志：session_id / batch_id / revision_count / created_at / updated_at / source_snapshot_version / audit_log<br/>5. 建立后续复盘入口：topic_effect_review_entry / performance_feedback_entry / optimization_feedback_link"]:::action
+    D5{"用户是否接受本轮结果并结束，或进入下一轮维护？"}:::decision
+end
+E1 --> D5
+D5 -- "是：接受结果，本轮结束" --> END
+D5 -- "否：局部删改补替 / 新使用记录回传" --> D1M
+D5 -- "否：需要重做详细阶段规划" --> B1
+D5 -- "否：发现路线或表达主场跑偏" --> A1
+
+END([结束]):::output

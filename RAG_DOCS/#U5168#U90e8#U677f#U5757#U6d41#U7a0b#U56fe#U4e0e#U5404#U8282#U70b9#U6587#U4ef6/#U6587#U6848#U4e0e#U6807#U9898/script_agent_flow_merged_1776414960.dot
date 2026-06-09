@@ -1,0 +1,108 @@
+
+digraph G {
+    graph [
+        rankdir=TB,
+        splines=ortho,
+        nodesep=0.45,
+        ranksep=0.7,
+        pad=0.35,
+        bgcolor="white",
+        fontname="Noto Sans CJK SC"
+    ];
+    node [fontname="Noto Sans CJK SC", color="#B8ADD8", penwidth=1.2];
+    edge [fontname="Noto Sans CJK SC", color="#6E6E6E", arrowsize=0.8, penwidth=1.1];
+
+    start [label="开始", shape=oval, style="filled", fillcolor="#EAF5E6", color="#A8C79B"];
+
+    subgraph cluster1 {
+        label="阶段1：上游承接与模式识别";
+        style="filled,rounded";
+        color="#CFC89A";
+        fillcolor="#F6F2D8";
+        penwidth=1.2;
+
+        a1 [shape=box, style="rounded,filled", fillcolor="#E9E3F8",
+            label="执行节点：读取上游输入并完成模式识别\n\n• 承接第一阶段访谈、第二阶段定位、第三阶段选题与历史记录\n• 锁定 route_lock，识别 route_conflict_flag / reroute_review_needed\n• 挂载 ToB / ToC 技巧库、模板库、爆款拆解库\n• 识别运行模式：已选题直写 / 想法收束成题 / 修改重写 / 批量出稿\n• 只做最小必要澄清，缺口不影响首版时优先先出稿"];
+        d1 [shape=diamond, style="filled", fillcolor="#E3DCF6",
+            label="路线、模式、\n信息是否已足够明确？"];
+    }
+
+    subgraph cluster2 {
+        label="阶段2：题目确认与写作策略装配";
+        style="filled,rounded";
+        color="#CFC89A";
+        fillcolor="#F6F2D8";
+        penwidth=1.2;
+
+        a2 [shape=box, style="rounded,filled", fillcolor="#E9E3F8",
+            label="执行节点：确认题目并装配写作策略\n\n• 已有 topic_id 直接确认；模糊想法先收束成可执行题目\n• 若第四阶段临时形成新题，生成标准 topic_id 并标记回写第三阶段\n• 召回人物事实、故事、案例、背书材料与上游证据\n• 检查证据边界，不得编造；证据不足但可首发时标记低置信度\n• 按固定优先级装配写作依据与策略：路线 × 平台 × 时长 × 结构 × 交付层级"];
+        d2 [shape=diamond, style="filled", fillcolor="#E3DCF6",
+            label="题目与证据是否已\n足够支撑写稿？"];
+    }
+
+    subgraph cluster3 {
+        label="阶段3：文案与标题生成";
+        style="filled,rounded";
+        color="#CFC89A";
+        fillcolor="#F6F2D8";
+        penwidth=1.2;
+
+        a3 [shape=box, style="rounded,filled", fillcolor="#E9E3F8",
+            label="执行节点：生成正文、标题与执行建议\n\n• 生成结构化首版文案：hook / opening / middle / closing / cta\n• 基于正文生成三版标题候选，保证同路线、同目标、同受众\n• 生成拍摄执行建议：表达、镜头、场地、布光、服装道具、形式判断\n• 生成下一条推荐选题，形成连续使用链路\n• 输出解释层：why_this_script / why_this_structure / why_now"];
+        d3 [shape=diamond, style="filled", fillcolor="#E3DCF6",
+            label="用户是否认可首版\n内容方向与标题？"];
+    }
+
+    subgraph cluster4 {
+        label="阶段4：质检与修订闭环";
+        style="filled,rounded";
+        color="#CFC89A";
+        fillcolor="#F6F2D8";
+        penwidth=1.2;
+
+        a4 [shape=box, style="rounded,filled", fillcolor="#E9E3F8",
+            label="执行节点：结构化写入、质检与修订\n\n• 写入统一对象：script_request_context / script_draft_bundle / shooting_advice_bundle / script_qc_report / stage3_sync_payload / performance_stub\n• 过程质检：模式识别、最小澄清、取材优先级、证据边界、反馈理解、局部修改优先、批量失败隔离\n• 结果质检：路线一致性、用户适配性、正文结构、拍摄建议完整度、回流对象完整度、命名统一性\n• 按反馈执行：只改标题 / 局部修改 / 整稿重写 / 批量单条重做\n• 高风险内容触发高审查模式，必要时退回澄清或重写"];
+        d4 [shape=diamond, style="filled", fillcolor="#E3DCF6",
+            label="当前结果是否通过质检\n并可放行？"];
+    }
+
+    subgraph cluster5 {
+        label="阶段5：回写、交付与复盘占位";
+        style="filled,rounded";
+        color="#CFC89A";
+        fillcolor="#F6F2D8";
+        penwidth=1.2;
+
+        a5 [shape=box, style="rounded,filled", fillcolor="#E9E3F8",
+            label="执行节点：回写第三阶段并完成用户交付\n\n• 回写第三阶段：topic_id / script_id / script_status / used_at / script_version / publish_status / performance_stub\n• 已使用题移出当前规划池，但保留历史记录与复盘入口\n• 写入发布与复盘占位：publish_date / notes / performance_stub\n• 向用户交付：最终文案、标题结果、拍摄建议、下一条推荐选题、轻解释层\n• 支持后续继续改稿、只改标题、带新题返回或批量继续出稿"];
+        d5 [shape=diamond, style="filled", fillcolor="#E3DCF6",
+            label="用户是否接受本轮结果\n并结束？"];
+    }
+
+    end [label="结束", shape=oval, style="filled", fillcolor="#EAF5E6", color="#A8C79B"];
+
+    start -> a1 -> d1;
+    d1 -> a1 [label="否：路线模糊 / 模式不清 / 信息不足", minlen=1];
+    d1 -> a2 [label="是"];
+
+    a2 -> d2;
+    d2 -> a2 [label="否：题目仍模糊 / 证据不足，继续收束或补证据"];
+    d2 -> a1 [label="否：发现路线冲突，回上游复核"];
+    d2 -> a3 [label="是"];
+
+    a3 -> d3;
+    d3 -> a3 [label="否：仅微调标题或首版表达"];
+    d3 -> a2 [label="否：题目方向不稳 / 证据策略需重装配"];
+    d3 -> a4 [label="是"];
+
+    a4 -> d4;
+    d4 -> a4 [label="否：局部修订 / 标题修订 / 过程补写"];
+    d4 -> a3 [label="否：需整稿重写"];
+    d4 -> a1 [label="否：route_conflict_flag / reroute_review_needed"];
+    d4 -> a5 [label="是"];
+
+    a5 -> d5;
+    d5 -> end [label="是：接受结果"];
+    d5 -> a4 [label="否：继续改稿 / 只改标题"];
+    d5 -> a1 [label="否：用户带新题回来 / 进入下一轮"];
+}
