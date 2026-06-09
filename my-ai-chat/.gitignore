@@ -29,3 +29,6 @@ knowledge-base/processed/*
 knowledge-base/embeddings/*
 !knowledge-base/embeddings/.gitkeep
 server/.env
+
+# Source zip archives (extracted contents are tracked)
+RAG_DOCS/*.zip
