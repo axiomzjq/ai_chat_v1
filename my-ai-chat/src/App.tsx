@@ -2130,7 +2130,11 @@ ${relevantKnowledge}`,
                           {m.text}
                         </ReactMarkdown>
                         {isLastModel && (
-                          <span className="inline-block w-1.5 h-4 md:w-2 md:h-5 bg-black ml-0.5 align-text-bottom animate-pulse rounded-sm" />
+                          <span className="inline-flex items-center gap-[3px] ml-1 h-5">
+                            <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
+                            <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
+                            <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.4s' }} />
+                          </span>
                         )}
                       </div>
                     </div>
@@ -2700,7 +2704,11 @@ ${relevantKnowledge}`,
                             <div className="markdown-body prose prose-sm max-w-none prose-inherit">
                               <ReactMarkdown>{msg.text}</ReactMarkdown>
                               {isLastModel && (
-                                <span className="inline-block w-1.5 h-4 md:w-2 md:h-5 bg-black ml-0.5 align-text-bottom animate-pulse rounded-sm" />
+                                <span className="inline-flex items-center gap-[3px] ml-1 h-5">
+                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
+                                  <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
+                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.4s' }} />
+                                </span>
                               )}
                             </div>
                           </div>
