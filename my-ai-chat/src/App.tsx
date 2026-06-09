@@ -145,7 +145,7 @@ interface AppState {
 
 // --- AI Service ---
 
-// TTS: 使用浏览器原生 SpeechSynthesis（DeepSeek 无 TTS 能力）
+// TTS: 使用浏览器原生 SpeechSynthesis（智谱AI 无 TTS 能力）
 
 const playTTS = async (text: string, onStart?: () => void, onEnd?: () => void) => {
   try {
@@ -746,7 +746,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
         )}
 
         <p className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">
-          Powered by DeepSeek & Authing
+          Powered by ZhipuAI & Authing
         </p>
       </motion.div>
     </div>

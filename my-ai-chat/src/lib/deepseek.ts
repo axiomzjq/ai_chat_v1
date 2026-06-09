@@ -1,6 +1,6 @@
 /**
- * DeepSeek API 客户端（后端代理版）
- * 前端不再直接调用 DeepSeek API，而是通过后端代理
+ * 智谱AI (ZhipuAI) API 客户端（后端代理版）
+ * 前端不再直接调用智谱AI API，而是通过后端代理
  * 后端持有 API Key，前端仅携带用户 Token 进行认证
  */
 
@@ -10,10 +10,10 @@ function getAuthToken(): string | null {
   return localStorage.getItem('authing_access_token');
 }
 
-// 模型映射：把内部简称映射到 DeepSeek 模型名
+// 模型映射：把内部简称映射到智谱AI 模型名
 export const MODELS = {
-  chat: 'deepseek-v4-flash',    // 测试阶段统一用 flash（便宜）
-  fast: 'deepseek-v4-flash',    // 快速响应
+  chat: 'glm-5.1',    // 主力模型
+  fast: 'glm-5.1',    // 快速响应
 } as const;
 
 export type ModelKey = keyof typeof MODELS;
@@ -53,14 +53,14 @@ function buildBodyMessages(options: ChatOptions): ChatMessage[] {
 }
 
 /**
- * 调用 DeepSeek Chat API（非流式，后端代理）
+ * 调用智谱AI Chat API（非流式，后端代理）
  */
 export async function chat(options: ChatOptions): Promise<string> {
   const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
   const bodyMessages = buildBodyMessages(options);
   const token = getAuthToken();
 
-  console.log(`[DeepSeek] Request: model=${model}, messages=${bodyMessages.length}`);
+  console.log(`[ZhipuAI] Request: model=${model}, messages=${bodyMessages.length}`);
 
   let lastError: any;
 
@@ -89,7 +89,7 @@ export async function chat(options: ChatOptions): Promise<string> {
       try {
         data = JSON.parse(responseText);
       } catch (parseErr) {
-        console.error('[DeepSeek] JSON parse failed. Raw response:', responseText.slice(0, 500));
+        console.error('[ZhipuAI] JSON parse failed. Raw response:', responseText.slice(0, 500));
         throw new Error(`AI API returned non-JSON: ${responseText.slice(0, 200)}`);
       }
 
@@ -108,10 +108,10 @@ export async function chat(options: ChatOptions): Promise<string> {
       return text;
     } catch (err: any) {
       lastError = err;
-      console.error(`[DeepSeek] Attempt ${attempt + 1}/${retries + 1} failed:`, err?.message || err);
+      console.error(`[ZhipuAI] Attempt ${attempt + 1}/${retries + 1} failed:`, err?.message || err);
       const is503 = err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
       if (is503 && attempt < retries) {
-        console.warn(`[DeepSeek] 503 retry ${attempt + 1}/${retries}, waiting 2s...`);
+        console.warn(`[ZhipuAI] 503 retry ${attempt + 1}/${retries}, waiting 2s...`);
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -129,7 +129,7 @@ export interface ChatStreamCallbacks {
 }
 
 /**
- * 流式调用 DeepSeek Chat API（SSE，后端代理透传）
+ * 流式调用智谱AI Chat API（SSE，后端代理透传）
  * 逐 chunk 回调，适合对话界面打字机效果
  */
 export async function chatStream(
@@ -193,7 +193,7 @@ export async function chatStream(
         try {
           const data = JSON.parse(dataStr);
           if (data.error) {
-            throw new Error(`DeepSeek API error: ${data.error.message || JSON.stringify(data.error)}`);
+            throw new Error(`智谱AI API error: ${data.error.message || JSON.stringify(data.error)}`);
           }
           const delta = data.choices?.[0]?.delta;
           const chunkText = delta?.content || '';
@@ -209,7 +209,7 @@ export async function chatStream(
             };
           }
         } catch (parseErr: any) {
-          console.warn('[DeepSeek] SSE parse warn:', parseErr.message, 'line:', trimmed.slice(0, 100));
+          console.warn('[ZhipuAI] SSE parse warn:', parseErr.message, 'line:', trimmed.slice(0, 100));
         }
       }
     }
@@ -271,4 +271,4 @@ export function createChat(options: {
 }
 
 // 日志
-console.info('[DeepSeek] 客户端已初始化（后端代理模式）');
+console.info('[ZhipuAI] 客户端已初始化（后端代理模式）');
