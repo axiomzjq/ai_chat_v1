@@ -191,8 +191,32 @@ ${rawText}`,
     return rawText;
   }
 };
-// 系统提示词已清空，实现干净对话（原提示词备份见 docs/system-prompt-backup.md）
-const INTERVIEW_SYSTEM_PROMPT = "";
+
+const INTERVIEW_SYSTEM_PROMPT = `你是一位顶级的【访谈顾问】兼【心理专家】，专门为创始人进行深度IP挖掘。
+你的任务是通过对话的方式，全面、深入地收集创始人的信息，为后续的IP定位和内容创作提供素材。
+
+### 访谈分为两个阶段：
+
+#### 第一阶段：全方位基本信息收集（快速建立画像）
+- **目标**：收集姓名、行业、年龄、地域、性格、爱好等基本信息。
+- **要求**：语气亲和，像朋友聊天，快速建立信任。**不要在MBTI测试上浪费过多时间，仅需通过1-2个关键问题了解性格倾向即可。**
+
+#### 第二阶段：深度访谈与心理分析（由心理专家主导，核心阶段）
+- **目标**：**在收集完基本信息后，即刻切换为心理专家身份。** 
+- **核心指令**：你必须**严格、深度地学习并应用**后台提供的【专业访谈语料】中的访谈方法论。不要使用通用的、肤浅的提问方式。
+- **提问逻辑**：基于第一阶段的信息，结合语料中的专业技巧（如：追问技巧、情感挖掘、价值观拆解等），进行针对性的深度提问。
+- **核心内容**：深入了解用户的价值观、成长经历、创业经历、人生故事、精神内核等。
+- **要求**：作为心理专家，要敏锐捕捉用户回答中的情感点和逻辑点，进行深度追问。**严禁一直围绕MBTI进行提问，必须通过具体的经历和故事挖掘人性的深度。**
+
+### 核心规则（必须永久遵守）：
+1. **严格遵循语料**：如果后台提供了访谈方法论，你必须将其作为提问的最高准则。
+2. **一次只问一个问题**：严禁在一次回复中包含两个或多个问题。必须等待用户回答后再提下一个问题。
+3. **深度挖掘**：不要只是机械地走流程。要根据用户的回答进行追问，挖掘细节、情感和背后的逻辑。
+4. **针对性提问**：提问必须结合第一阶段的用户画像以及后台提供的专业访谈方法。
+5. **语气**：专业、睿智、富有同理心，像老友交谈，也像资深记者和心理医生。
+
+### 结束语：
+当所有信息收集完毕后，请告知用户："访谈已圆满结束，感谢您的深度配合。我将为您生成一份极其详尽的【创始人创业经历深度分析报告】。"`;
 
 
 const INFO_SYSTEM_PROMPT = `你是一位资深的【信息顾问】，负责收集整合用户公司资料、业务信息以及行业咨询。
@@ -1601,7 +1625,7 @@ export default function App() {
       }));
     }
 
-    setMessages([{ role: 'model', text: '你好，有什么我可以帮你的吗？' }]);
+    setMessages([{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
     setInput('');
     setCompanyInfo('');
     setCurrentStep('interview');
@@ -1773,7 +1797,7 @@ export default function App() {
 
   // --- Interview Agent State ---
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: '你好，有什么我可以帮你的吗？' }
+    { role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }
   ]);
 
   // Load User Progress on Login
@@ -1928,7 +1952,7 @@ ${relevantKnowledge}`,
   };
 
   const restartInterview = () => {
-    setMessages([{ role: 'model', text: '你好，有什么我可以帮你的吗？' }]);
+    setMessages([{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
     setState(prev => ({
       ...prev,
       interviewPhase: 'basic',
@@ -3030,7 +3054,7 @@ ${relevantKnowledge}`,
                         <button
                           onClick={() => {
                             // 恢复完整会话状态（兼容旧格式数据）
-                            setMessages(item.messages?.length > 0 ? item.messages : [{ role: 'model', text: '你好，有什么我可以帮你的吗？' }]);
+                            setMessages(item.messages?.length > 0 ? item.messages : [{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
                             setCompanyInfo(item.companyInfo || '');
                             setState(prev => ({
                               ...prev,
