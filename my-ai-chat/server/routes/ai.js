@@ -8,9 +8,26 @@ router.use(authMiddleware);
 
 const ZHIPU_API_KEY = process.env.ZHIPU_API_KEY;
 const ZHIPU_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
+const DEFAULT_KNOWLEDGE_ID = process.env.ZHIPU_KNOWLEDGE_ID;
 
 if (!ZHIPU_API_KEY) {
   console.error('[AI] ❌ ZHIPU_API_KEY 未配置，AI 路由将无法使用');
+}
+
+/**
+ * 构建智谱知识库检索 tools
+ * @param {string} knowledgeId - 知识库 ID
+ * @returns {Array} tools 数组
+ */
+function buildRetrievalTools(knowledgeId) {
+  if (!knowledgeId) return undefined;
+  return [{
+    type: 'retrieval',
+    retrieval: {
+      knowledge_id: knowledgeId,
+      prompt_template: '从文档\n"""\n{{knowledge}}\n"""\n中找问题\n"""\n{{question}}\n"""\n的答案，找到答案就仅使用文档语句回答问题，找不到答案就用自身知识回答并且告诉用户该信息不是来自文档。\n不要复述问题，直接开始回答。'
+    }
+  }];
 }
 
 // POST /api/ai/chat - 非流式对话（后端代理）
@@ -20,7 +37,7 @@ router.post('/chat', async (req, res, next) => {
       return res.status(500).json({ code: 5001, message: '智谱AI API Key 未配置', data: null });
     }
 
-    const { model, messages, temperature, max_tokens, system } = req.body;
+    const { model, messages, temperature, max_tokens, system, knowledge_id } = req.body;
 
     const bodyMessages = [];
     if (system) {
@@ -33,19 +50,25 @@ router.post('/chat', async (req, res, next) => {
       })));
     }
 
+    const effectiveKnowledgeId = knowledge_id || DEFAULT_KNOWLEDGE_ID;
+    const tools = buildRetrievalTools(effectiveKnowledgeId);
+
+    const requestBody = {
+      model: model || 'glm-5.1',
+      messages: bodyMessages,
+      temperature: temperature ?? 0.7,
+      max_tokens: max_tokens ?? 8192,
+      stream: false,
+      ...(tools ? { tools } : {}),
+    };
+
     const response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${ZHIPU_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: model || 'glm-5.1',
-        messages: bodyMessages,
-        temperature: temperature ?? 0.7,
-        max_tokens: max_tokens ?? 8192,
-        stream: false,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const responseText = await response.text();
@@ -80,7 +103,7 @@ router.post('/chat-stream', async (req, res, next) => {
       return res.status(500).json({ code: 5001, message: '智谱AI API Key 未配置', data: null });
     }
 
-    const { model, messages, temperature, max_tokens, system } = req.body;
+    const { model, messages, temperature, max_tokens, system, knowledge_id } = req.body;
 
     const bodyMessages = [];
     if (system) {
@@ -93,19 +116,25 @@ router.post('/chat-stream', async (req, res, next) => {
       })));
     }
 
+    const effectiveKnowledgeId = knowledge_id || DEFAULT_KNOWLEDGE_ID;
+    const tools = buildRetrievalTools(effectiveKnowledgeId);
+
+    const requestBody = {
+      model: model || 'glm-5.1',
+      messages: bodyMessages,
+      temperature: temperature ?? 0.7,
+      max_tokens: max_tokens ?? 8192,
+      stream: true,
+      ...(tools ? { tools } : {}),
+    };
+
     const response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${ZHIPU_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: model || 'glm-5.1',
-        messages: bodyMessages,
-        temperature: temperature ?? 0.7,
-        max_tokens: max_tokens ?? 8192,
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {

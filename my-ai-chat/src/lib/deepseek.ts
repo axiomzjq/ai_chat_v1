@@ -37,6 +37,7 @@ interface ChatOptions {
   max_tokens?: number;
   retries?: number;
   onUsage?: (usage: TokenUsage) => void;
+  knowledge_id?: string;
 }
 
 function buildBodyMessages(options: ChatOptions): ChatMessage[] {
@@ -56,11 +57,11 @@ function buildBodyMessages(options: ChatOptions): ChatMessage[] {
  * 调用智谱AI Chat API（非流式，后端代理）
  */
 export async function chat(options: ChatOptions): Promise<string> {
-  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2 } = options;
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2, knowledge_id } = options;
   const bodyMessages = buildBodyMessages(options);
   const token = getAuthToken();
 
-  console.log(`[ZhipuAI] Request: model=${model}, messages=${bodyMessages.length}`);
+  console.log(`[ZhipuAI] Request: model=${model}, messages=${bodyMessages.length}${knowledge_id ? ', knowledge_id=' + knowledge_id : ''}`);
 
   let lastError: any;
 
@@ -79,6 +80,7 @@ export async function chat(options: ChatOptions): Promise<string> {
           messages: bodyMessages,
           temperature,
           max_tokens,
+          ...(knowledge_id ? { knowledge_id } : {}),
         }),
         signal: controller.signal,
       });
@@ -135,7 +137,7 @@ export interface ChatStreamCallbacks {
 export async function chatStream(
   options: Omit<ChatOptions, 'onUsage'> & ChatStreamCallbacks,
 ): Promise<void> {
-  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, onChunk, onDone, onError } = options;
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, onChunk, onDone, onError, knowledge_id } = options;
   const bodyMessages = buildBodyMessages(options);
   const token = getAuthToken();
 
@@ -153,6 +155,7 @@ export async function chatStream(
         messages: bodyMessages,
         temperature,
         max_tokens,
+        ...(knowledge_id ? { knowledge_id } : {}),
       }),
       signal: controller.signal,
     });

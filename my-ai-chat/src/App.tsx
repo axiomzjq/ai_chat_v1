@@ -13,6 +13,11 @@ import {
   POSITIONING_SYSTEM_PROMPT,
   COPYWRITING_SYSTEM_PROMPT,
 } from './lib/prompts';
+
+// 智谱知识库 ID（用于对话调用知识库进行 RAG 问答）
+// 配置方式：在前端 .env.local 中设置 VITE_ZHIPU_KNOWLEDGE_ID=xxx
+// 或在后端 server/.env 中设置 ZHIPU_KNOWLEDGE_ID=xxx（后端会自动 fallback）
+const ZHIPU_KNOWLEDGE_ID = (import.meta.env.VITE_ZHIPU_KNOWLEDGE_ID as string | undefined) || undefined;
 import { 
   Building2, 
   Target, 
@@ -3036,6 +3041,7 @@ ${relevantKnowledge}`,
 
       await deepseek.chatStream({
         model: deepseek.MODELS.fast,
+        knowledge_id: ZHIPU_KNOWLEDGE_ID,
         system: INTERVIEW_SYSTEM_PROMPT + (knowledgeContext ? `
 
 【重要：请严格遵循以下管理员提供的专业访谈方法论进行提问】：
@@ -3328,6 +3334,7 @@ AI说：${modelText}
 
       const modelText = await deepseek.chat({
         model: deepseek.MODELS.fast,
+        knowledge_id: ZHIPU_KNOWLEDGE_ID,
         system: COPYWRITING_SYSTEM_PROMPT + "\n\n当前处于【思路整理阶段】。请通过对话形式帮用户整理思路，挖掘亮点。" + (knowledgeContext ? `
 
 请参考以下专业语料提升文案水准：
