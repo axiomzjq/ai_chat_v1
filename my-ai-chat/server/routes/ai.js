@@ -76,7 +76,7 @@ router.post('/chat', async (req, res, next) => {
       model: model || 'glm-5.1',
       messages: bodyMessages,
       temperature: temperature ?? 0.7,
-      max_tokens: max_tokens ?? 8192,
+      max_tokens: max_tokens ?? 4096,
       stream: false,
       ...(tools ? { tools } : {}),
     };
@@ -153,7 +153,7 @@ router.post('/chat-stream', async (req, res, next) => {
       model: model || 'glm-5.1',
       messages: bodyMessages,
       temperature: temperature ?? 0.7,
-      max_tokens: max_tokens ?? 8192,
+      max_tokens: max_tokens ?? 4096,
       stream: true,
       ...(tools ? { tools } : {}),
     };

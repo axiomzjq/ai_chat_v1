@@ -57,7 +57,7 @@ function buildBodyMessages(options: ChatOptions): ChatMessage[] {
  * 调用智谱AI Chat API（非流式，后端代理）
  */
 export async function chat(options: ChatOptions): Promise<string> {
-  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, retries = 2, knowledge_id } = options;
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 4096, retries = 2, knowledge_id } = options;
   const bodyMessages = buildBodyMessages(options);
   const token = getAuthToken();
 
@@ -137,7 +137,7 @@ export interface ChatStreamCallbacks {
 export async function chatStream(
   options: Omit<ChatOptions, 'onUsage'> & ChatStreamCallbacks,
 ): Promise<void> {
-  const { model = MODELS.chat, temperature = 0.7, max_tokens = 8192, onChunk, onDone, onError, knowledge_id } = options;
+  const { model = MODELS.chat, temperature = 0.7, max_tokens = 4096, onChunk, onDone, onError, knowledge_id } = options;
   const bodyMessages = buildBodyMessages(options);
   const token = getAuthToken();
 
