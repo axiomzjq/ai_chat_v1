@@ -25,19 +25,38 @@ function buildRetrievalTools(knowledgeId) {
     type: 'retrieval',
     retrieval: {
       knowledge_id: knowledgeId,
-      prompt_template: '从文档\n"""\n{{knowledge}}\n"""\n中找问题\n"""\n{{question}}\n"""\n的答案，找到答案就仅使用文档语句回答问题，找不到答案就用自身知识回答并且告诉用户该信息不是来自文档。\n不要复述问题，直接开始回答。'
+      prompt_template: `你当前正在进行一场专业对话，以下是从知识库中检索到的参考资料：
+"""
+{{knowledge}}
+"""
+
+用户输入：
+"""
+{{question}}
+"""
+
+要求：
+1. 将参考资料中的方法论、框架、技巧和最佳实践作为背景知识消化吸收，自然融入你的回复中。
+2. 当用户询问具体概念、流程、标准或行业做法时，优先基于参考资料回答。
+3. 当用户的问题是开放性的个人信息（如姓名、经历、观点、偏好等）或需要你来引导对话时，正常进行专业访谈/咨询，不要机械复述文档，也不要告诉用户"该信息不是来自文档"。
+4. 回复保持自然、专业、有温度，像一位资深顾问一样与用户交流。
+
+请直接开始回答。`
     }
   }];
 }
 
 // POST /api/ai/chat - 非流式对话（后端代理）
 router.post('/chat', async (req, res, next) => {
+  const startTime = Date.now();
+  const userId = req.user?.sub || req.user?.id || 'anonymous';
   try {
     if (!ZHIPU_API_KEY) {
       return res.status(500).json({ code: 5001, message: '智谱AI API Key 未配置', data: null });
     }
 
     const { model, messages, temperature, max_tokens, system, knowledge_id } = req.body;
+    const msgCount = Array.isArray(messages) ? messages.length : 0;
 
     const bodyMessages = [];
     if (system) {
@@ -62,6 +81,7 @@ router.post('/chat', async (req, res, next) => {
       ...(tools ? { tools } : {}),
     };
 
+    const apiStart = Date.now();
     const response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -70,6 +90,7 @@ router.post('/chat', async (req, res, next) => {
       },
       body: JSON.stringify(requestBody),
     });
+    const apiElapsed = Date.now() - apiStart;
 
     const responseText = await response.text();
     let data;
@@ -83,6 +104,9 @@ router.post('/chat', async (req, res, next) => {
       throw new Error(`智谱AI API error: ${data.error.message || JSON.stringify(data.error)}`);
     }
 
+    const totalElapsed = Date.now() - startTime;
+    console.log(`[AI][chat] user=${userId} model=${model || 'glm-5.1'} msgs=${msgCount} kb=${effectiveKnowledgeId ? 'yes' : 'no'} api=${apiElapsed}ms total=${totalElapsed}ms tokens=${JSON.stringify(data.usage || {})}`);
+
     res.json({
       code: 0,
       message: 'success',
@@ -92,18 +116,24 @@ router.post('/chat', async (req, res, next) => {
       },
     });
   } catch (err) {
+    const totalElapsed = Date.now() - startTime;
+    console.error(`[AI][chat] user=${userId} ERROR after ${totalElapsed}ms:`, err.message);
     next(err);
   }
 });
 
 // POST /api/ai/chat-stream - 流式对话 SSE（后端代理透传）
 router.post('/chat-stream', async (req, res, next) => {
+  const startTime = Date.now();
+  const userId = req.user?.sub || req.user?.id || 'anonymous';
+  let apiStart = 0;
   try {
     if (!ZHIPU_API_KEY) {
       return res.status(500).json({ code: 5001, message: '智谱AI API Key 未配置', data: null });
     }
 
     const { model, messages, temperature, max_tokens, system, knowledge_id } = req.body;
+    const msgCount = Array.isArray(messages) ? messages.length : 0;
 
     const bodyMessages = [];
     if (system) {
@@ -128,6 +158,7 @@ router.post('/chat-stream', async (req, res, next) => {
       ...(tools ? { tools } : {}),
     };
 
+    apiStart = Date.now();
     const response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -136,11 +167,14 @@ router.post('/chat-stream', async (req, res, next) => {
       },
       body: JSON.stringify(requestBody),
     });
+    const apiElapsed = Date.now() - apiStart;
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(`智谱AI API error: HTTP ${response.status} ${text.slice(0, 200)}`);
     }
+
+    console.log(`[AI][stream] user=${userId} model=${model || 'glm-5.1'} msgs=${msgCount} kb=${effectiveKnowledgeId ? 'yes' : 'no'} api-first-byte=${apiElapsed}ms`);
 
     // 透传 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
@@ -149,20 +183,30 @@ router.post('/chat-stream', async (req, res, next) => {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let firstChunk = true;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        if (firstChunk) {
+          firstChunk = false;
+          const totalElapsed = Date.now() - startTime;
+          console.log(`[AI][stream] user=${userId} first-chunk-arrived total=${totalElapsed}ms`);
+        }
         res.write(chunk);
       }
     } catch (streamErr) {
       console.error('[AI] Stream error:', streamErr.message);
     } finally {
+      const totalElapsed = Date.now() - startTime;
+      console.log(`[AI][stream] user=${userId} stream-ended total=${totalElapsed}ms`);
       res.end();
     }
   } catch (err) {
+    const totalElapsed = Date.now() - startTime;
+    console.error(`[AI][stream] user=${userId} ERROR after ${totalElapsed}ms:`, err.message);
     next(err);
   }
 });
