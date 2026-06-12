@@ -180,6 +180,7 @@ router.post('/chat-stream', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // 禁止 Nginx 等代理缓冲 SSE
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -196,6 +197,9 @@ router.post('/chat-stream', async (req, res, next) => {
           console.log(`[AI][stream] user=${userId} first-chunk-arrived total=${totalElapsed}ms`);
         }
         res.write(chunk);
+        if (typeof res.flush === 'function') {
+          res.flush();
+        }
       }
     } catch (streamErr) {
       console.error('[AI] Stream error:', streamErr.message);
