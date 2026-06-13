@@ -203,10 +203,8 @@ export async function chatStream(
           if (chunkText) {
             fullText += chunkText;
             onChunk(chunkText);
-            // DEBUG: 调试用，观察 chunk 到达频率
-            if (import.meta.env.DEV) {
-              console.log(`[ZhipuAI] chunk received: "${chunkText.slice(0, 20)}${chunkText.length > 20 ? '...' : ''}"`);
-            }
+            // 观察 chunk 到达频率，辅助诊断流式显示问题
+            console.log(`[ZhipuAI] chunk received len=${chunkText.length}: "${chunkText.slice(0, 30)}${chunkText.length > 30 ? '...' : ''}"`);
           }
           if (data.usage) {
             lastUsage = {

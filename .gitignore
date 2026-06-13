@@ -54,3 +54,6 @@ elitefounder-ai.zip
 
 # --- Vite 热更新临时文件 ---
 *.local
+
+# --- 浏览器抓包文件（可能包含敏感信息） ---
+*.har

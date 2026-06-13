@@ -78,6 +78,7 @@ router.post('/chat', async (req, res, next) => {
       temperature: temperature ?? 0.7,
       max_tokens: max_tokens ?? 4096,
       stream: false,
+      thinking: { type: 'disabled' }, // 关闭深度思考模式，显著提升对话响应速度
       ...(tools ? { tools } : {}),
     };
 
@@ -155,6 +156,7 @@ router.post('/chat-stream', async (req, res, next) => {
       temperature: temperature ?? 0.7,
       max_tokens: max_tokens ?? 4096,
       stream: true,
+      thinking: { type: 'disabled' }, // 关闭深度思考模式，显著提升对话响应速度
       ...(tools ? { tools } : {}),
     };
 
