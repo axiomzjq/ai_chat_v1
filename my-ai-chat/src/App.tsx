@@ -1505,55 +1505,70 @@ export default function App() {
   };
 
   const resetAllData = () => {
-    const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content || state.copywritingMessages.length > 0;
-    const confirmMsg = hasAnyData
-      ? '确定要清空当前会话并保存到历史记录吗？\n\n当前对话和生成内容将保存到历史，然后重新开始。'
-      : '确定要清空所有用户数据吗？\n\n这将删除所有访谈对话记录、报告、文案和上传资料。\n\n此操作不可恢复。';
-    if (!window.confirm(confirmMsg)) return;
+    try {
+      const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content || state.copywritingMessages.length > 0;
+      const confirmMsg = hasAnyData
+        ? '确定要清空当前会话并保存到历史记录吗？\n\n当前对话和生成内容将保存到历史，然后重新开始。'
+        : '确定要清空所有用户数据吗？\n\n这将删除所有访谈对话记录、报告、文案和上传资料。\n\n此操作不可恢复。';
 
-    // 如果有数据，先保存到历史
-    if (hasAnyData) {
-      const newItem: HistoryItem = {
-        id: Date.now().toString(),
-        date: new Date().toLocaleString('zh-CN'),
-        title: generateHistoryTitle(),
-        messages: [...messages],
-        interviewPhase: state.interviewPhase,
-        interviewReport: state.interviewReport,
-        companyInfo,
-        infoReport: state.infoReport,
-        positioningOptions: state.positioningOptions,
-        selectedPositioningIndex: state.selectedPositioningIndex,
-        positioningReport: state.positioningReport,
-        copywritingMessages: state.copywritingMessages,
-        isCopywritingChatMode: state.isCopywritingChatMode,
-        copywritingOutput: { ...state.copywritingOutput },
-        uploadedMaterials: [...state.uploadedMaterials],
-      };
+      // 部分浏览器/内嵌环境会阻止 window.confirm，做兜底提示
+      let confirmed = false;
+      try {
+        confirmed = window.confirm(confirmMsg);
+      } catch (confirmErr) {
+        console.error('[resetAllData] confirm dialog blocked:', confirmErr);
+        alert('无法弹出确认对话框，请检查浏览器设置');
+        return;
+      }
+      if (!confirmed) return;
+
+      // 如果有数据，先保存到历史
+      if (hasAnyData) {
+        const newItem: HistoryItem = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleString('zh-CN'),
+          title: generateHistoryTitle(),
+          messages: [...messages],
+          interviewPhase: state.interviewPhase,
+          interviewReport: state.interviewReport,
+          companyInfo,
+          infoReport: state.infoReport,
+          positioningOptions: state.positioningOptions,
+          selectedPositioningIndex: state.selectedPositioningIndex,
+          positioningReport: state.positioningReport,
+          copywritingMessages: state.copywritingMessages,
+          isCopywritingChatMode: state.isCopywritingChatMode,
+          copywritingOutput: { ...state.copywritingOutput },
+          uploadedMaterials: [...state.uploadedMaterials],
+        };
+        setState(prev => ({
+          ...prev,
+          history: [newItem, ...prev.history].slice(0, 99),
+        }));
+      }
+
+      setMessages([{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
+      setInput('');
+      setCompanyInfo('');
+      setCurrentStep('interview');
       setState(prev => ({
         ...prev,
-        history: [newItem, ...prev.history].slice(0, 99),
+        interviewPhase: 'basic',
+        interviewReport: '',
+        infoReport: '',
+        positioningOptions: [],
+        selectedPositioningIndex: null,
+        positioningReport: '',
+        copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
+        copywritingMessages: [],
+        isCopywritingChatMode: false,
+        uploadedMaterials: [],
       }));
+      alert(hasAnyData ? '✅ 当前会话已保存到历史记录，重新开始。' : '✅ 所有数据已清空，重新开始。');
+    } catch (error: any) {
+      console.error('[resetAllData] 清空记录失败:', error);
+      alert('清空记录失败: ' + (error.message || '未知错误'));
     }
-
-    setMessages([{ role: 'model', text: '您好，我是您的访谈顾问。很高兴能协助您梳理个人IP。为了更好地挖掘您的故事，我们先从全方位的个人信息开始。首先，请问您的姓名是什么？' }]);
-    setInput('');
-    setCompanyInfo('');
-    setCurrentStep('interview');
-    setState(prev => ({
-      ...prev,
-      interviewPhase: 'basic',
-      interviewReport: '',
-      infoReport: '',
-      positioningOptions: [],
-      selectedPositioningIndex: null,
-      positioningReport: '',
-      copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
-      copywritingMessages: [],
-      isCopywritingChatMode: false,
-      uploadedMaterials: [],
-    }));
-    alert(hasAnyData ? '✅ 当前会话已保存到历史记录，重新开始。' : '✅ 所有数据已清空，重新开始。');
   };
 
   const generateHistoryTitle = (): string => {
@@ -2150,7 +2165,7 @@ ${relevantKnowledge}`,
             </div>
 
             <div className="p-4 md:p-6 bg-gray-50/50 border-t border-gray-100">
-              {DEBUG_MODE !== 'off' && state.user && state.user.role !== 'admin' && (
+              {DEBUG_MODE === 'dev' && state.user && state.user.role !== 'admin' && (
                 <div className="mb-3 px-1">
                   <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-mono">
                     <span>Token: {state.user.tokenUsed?.toLocaleString()} / {state.user.tokenQuota?.toLocaleString()}</span>
@@ -3631,13 +3646,22 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
             <Phone className="w-5 h-5 text-white" />
           </button>
           {DEBUG_MODE !== 'off' && (
-            <button
-              onClick={() => setShowLogs(true)}
-              className="p-2 bg-gray-50 rounded-lg"
-              title="导出调试日志"
-            >
-              <Bug className="w-5 h-5 text-amber-500" />
-            </button>
+            <>
+              <button
+                onClick={() => setShowLogs(true)}
+                className="p-2 bg-gray-50 rounded-lg"
+                title="导出调试日志"
+              >
+                <Bug className="w-5 h-5 text-amber-500" />
+              </button>
+              <button
+                onClick={resetAllData}
+                className="p-2 bg-gray-50 rounded-lg"
+                title="一键还原：清空所有用户数据"
+              >
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </button>
+            </>
           )}
           <button
             onClick={handleLogout}
