@@ -179,9 +179,9 @@ export async function authMiddleware(req, res, next) {
         isNewUser = true;
       } else {
         // 自动创建新用户
-        // 管理员标识：从环境变量读取，默认使用原手机号（生产环境应更换）
-        const adminPhone = process.env.ADMIN_PHONE || '17388978910';
-        const role = phone === adminPhone ? 'admin' : 'user';
+        // 管理员标识：仅当显式配置 ADMIN_PHONE 环境变量时才生效，不再使用硬编码默认值
+        const adminPhone = process.env.ADMIN_PHONE;
+        const role = adminPhone && phone === adminPhone ? 'admin' : 'user';
         // 默认订阅：7天试用期，100K tokens
         const defaultDays = role === 'admin' ? 99999 : 7;
         const defaultTokens = role === 'admin' ? 999999999 : 100000;

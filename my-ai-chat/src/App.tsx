@@ -484,8 +484,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          // fallback: 根据手机号判断管理员
-          if (user.email === '17388978910') role = 'admin';
+          // 不再根据手机号硬编码判断管理员，角色完全由后端数据库决定
         }
       }
 
@@ -522,8 +521,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          // fallback: 根据手机号判断管理员
-          if (user.email === '17388978910') role = 'admin';
+          // 不再根据手机号硬编码判断管理员，角色完全由后端数据库决定
         }
       }
 
