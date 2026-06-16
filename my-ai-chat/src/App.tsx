@@ -1573,8 +1573,9 @@ export default function App() {
     // 优先用文案标题，其次用定位方案名，再其次用公司名/姓名
     const cwTitle = state.copywritingOutput.titles[state.copywritingOutput.selectedTitleIndex || 0];
     if (cwTitle) return cwTitle;
-    if (state.positioningReport) {
-      const match = state.positioningReport.match(/###\s+定位方案\s*\d*[:：]\s*(.+)/);
+    const positioningReportText = typeof state.positioningReport === 'string' ? state.positioningReport : '';
+    if (positioningReportText) {
+      const match = positioningReportText.match(/###\s+定位方案\s*\d*[:：]\s*(.+)/);
       if (match) return match[1].trim();
     }
     if (companyInfo) {
@@ -1737,7 +1738,7 @@ export default function App() {
               ...prev,
               interviewReport: data.interview_data?.report || prev.interviewReport,
               infoReport: typeof data.information_report === 'string' ? data.information_report : prev.infoReport,
-              positioningReport: data.positioning_report || prev.positioningReport,
+              positioningReport: typeof data.positioning_report === 'string' ? data.positioning_report : '',
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
               copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
