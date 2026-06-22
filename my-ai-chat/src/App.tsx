@@ -19,7 +19,6 @@ import {
 // 或在后端 server/.env 中设置 ZHIPU_KNOWLEDGE_ID=xxx（后端会自动 fallback）
 const ZHIPU_KNOWLEDGE_ID = (import.meta.env.VITE_ZHIPU_KNOWLEDGE_ID as string | undefined) || undefined;
 import { 
-  Building2, 
   Target, 
   FileText, 
   ChevronRight, 
@@ -77,7 +76,7 @@ import {
 
 // --- Types ---
 
-type Step = 'interview' | 'information' | 'positioning' | 'copywriting' | 'history';
+type Step = 'interview' | 'positioning' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
 const isStepUnlocked = (stepId: Step, interviewReport: string) => {
@@ -215,7 +214,6 @@ function StepIndicator({ currentStep, onStepClick, state }: {
 }) {
   const steps: { id: Step; label: string; icon: any }[] = [
     { id: 'interview', label: '访谈', icon: MessageSquare },
-    { id: 'information', label: '信息', icon: Database },
     { id: 'positioning', label: '定位', icon: Target },
     { id: 'copywriting', label: '文案', icon: PenTool },
     { id: 'history', label: '历史', icon: CheckCircle2 },
@@ -362,7 +360,14 @@ const UI_STATE_KEY = 'ai_chat_ui_state';
 function loadUIState(): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(UI_STATE_KEY) : null;
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // 兼容旧版已移除的 information 步骤
+      if (parsed.currentStep === 'information') {
+        parsed.currentStep = 'interview';
+      }
+      return parsed;
+    }
   } catch { /* ignore */ }
   return { currentStep: 'interview', isStarted: false, lastView: null, adminActiveTab: 'users' };
 }
@@ -1941,8 +1946,6 @@ ${relevantKnowledge}`,
         const displayText = finalTranscriptRef.current + interimTranscript;
         if (currentStep === 'interview') {
           setInput(displayText);
-        } else if (currentStep === 'information') {
-          setCompanyInfo(displayText);
         } else if (currentStep === 'positioning') {
           setPositioningFeedback(displayText);
         }
@@ -2086,17 +2089,17 @@ ${relevantKnowledge}`,
                 </div>
                 <h2 className="font-semibold text-sm md:text-base">访谈顾问：挖掘个人故事</h2>
               </div>
-              <button 
+              <button
                 onClick={() => {
-                  if (isStepUnlocked('information', state.interviewReport)) {
-                    setCurrentStep('information');
+                  if (isStepUnlocked('positioning', state.interviewReport)) {
+                    setCurrentStep('positioning');
                   } else {
                     alert('请先完成访谈并生成深度报告');
                   }
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('information', state.interviewReport)
+                  isStepUnlocked('positioning', state.interviewReport)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -2181,6 +2184,50 @@ ${relevantKnowledge}`,
                   </div>
                 </div>
               )}
+              {/* Uploaded materials */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-400">上传参考资料</label>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[10px] font-bold text-black hover:underline"
+                  >
+                    添加文件
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    multiple
+                    className="hidden"
+                    accept="image/*,.pdf,.doc,.docx,.txt,.mp4,.xlsx,.xls"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {state.uploadedMaterials.map((file, i) => (
+                    <div key={i} className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <FileText size={12} className="text-gray-400" />
+                      <span className="text-[10px] font-medium truncate max-w-[120px] md:max-w-[180px]">{file.name}</span>
+                      <button
+                        onClick={() => handleDeleteMaterial(i)}
+                        className="text-gray-300 hover:text-red-500"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {state.uploadedMaterials.length === 0 && (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1 text-gray-300 hover:text-gray-400 cursor-pointer transition-all"
+                    >
+                      <Upload size={14} />
+                      <span className="text-[10px] font-medium">点击上传图片、文档、视频等</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="relative flex items-center gap-2">
                 <div className="relative flex-1">
                   <input
@@ -2326,154 +2373,11 @@ ${relevantKnowledge}`,
             </div>
           </div>
         );
-      case 'information':
-        return (
-          <div className="flex-1 flex flex-col p-4 md:p-8">
-            <div className="flex items-center justify-between mb-6 md:mb-8">
-              <button onClick={() => setCurrentStep('interview')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
-                <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
-              </button>
-              <div className="flex items-center gap-2 md:gap-3">
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
-                  <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <h2 className="text-base md:text-xl font-bold">信息顾问：背景整合</h2>
-              </div>
-              <div className="w-10 md:w-20" />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-12 flex-1">
-              <div className="space-y-6 md:space-y-8">
-                <div className="space-y-2 relative">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-400">输入企业与业务信息</label>
-                    <button 
-                      onClick={toggleListening}
-                      className={cn(
-                        "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
-                        isListening ? "bg-red-50 text-red-500 animate-pulse" : "bg-gray-100 text-gray-400 hover:text-black"
-                      )}
-                    >
-                      {isListening ? <MicOff size={12} /> : <Mic size={12} />}
-                      {isListening ? "正在录音..." : "语音输入"}
-                    </button>
-                  </div>
-                  <textarea 
-                    value={companyInfo}
-                    onChange={(e) => setCompanyInfo(e.target.value)}
-                    placeholder="请描述您的公司名称、主营业务、核心产品..."
-                    className="w-full h-[150px] md:h-[200px] bg-gray-50 border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all resize-none text-xs md:text-sm leading-relaxed"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-400">上传参考资料</label>
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-[10px] font-bold text-black hover:underline"
-                    >
-                      添加文件
-                    </button>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleFileUpload} 
-                      multiple 
-                      className="hidden" 
-                      accept="image/*,.pdf,.doc,.docx,.txt,.mp4,.xlsx,.xls"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {state.uploadedMaterials.map((file, i) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100">
-                        <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-gray-400">
-                          <FileText size={14} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium truncate">{file.name}</p>
-                          <p className="text-[8px] text-gray-400">{file.size}</p>
-                        </div>
-                        <button 
-                          onClick={() => handleDeleteMaterial(i)}
-                          className="text-gray-300 hover:text-red-500"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    {state.uploadedMaterials.length === 0 && (
-                      <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="col-span-2 border-2 border-dashed border-gray-100 rounded-xl p-4 flex flex-col items-center justify-center text-gray-300 hover:border-gray-200 hover:text-gray-400 transition-all cursor-pointer"
-                      >
-                        <Download size={20} className="mb-1" />
-                        <span className="text-[10px] font-medium">点击上传图片、文档、视频等</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button 
-                  onClick={generateInfoReport}
-                  disabled={isGeneratingInfo || !companyInfo.trim()}
-                  className="w-full bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:bg-gray-200 text-sm"
-                >
-                  {isGeneratingInfo ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
-                  生成分析报告
-                </button>
-              </div>
-
-              <div className="bg-gray-50 rounded-2xl md:rounded-3xl p-4 md:p-8 border border-gray-100 overflow-y-auto max-h-[400px] md:max-h-[600px]">
-                {state.infoReport ? (
-                  <div className="space-y-4">
-                    <CollapsibleSection title="查看企业与行业分析报告" icon={Database}>
-                      <div className="flex items-center justify-end gap-4 mb-4">
-                        <button 
-                          onClick={() => downloadReport(state.infoReport, '企业与行业分析报告.md')}
-                          className="text-xs text-gray-400 hover:text-black transition-colors flex items-center gap-1"
-                        >
-                          <Download size={14} /> 下载
-                        </button>
-                        <button 
-                          onClick={() => handleCopy(state.infoReport, 'info')}
-                          className="text-xs text-gray-400 hover:text-black transition-colors flex items-center gap-1"
-                        >
-                          {copyStatus === 'info' ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
-                          {copyStatus === 'info' ? '已复制' : '复制'}
-                        </button>
-                      </div>
-                      <div className="prose prose-sm max-w-none">
-                        <ReactMarkdown>{state.infoReport}</ReactMarkdown>
-                      </div>
-                    </CollapsibleSection>
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-3 md:space-y-4">
-                    <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-xl md:rounded-2xl overflow-hidden flex items-center justify-center shadow-sm border border-gray-100">
-                      <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
-                    </div>
-                    <p className="text-gray-400 text-[10px] md:text-sm max-w-[200px]">报告生成后将在此处显示</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-gray-100 flex justify-end">
-              <button 
-                onClick={() => setCurrentStep('positioning')}
-                className="bg-black text-white px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center gap-2 hover:gap-3 md:hover:gap-4 transition-all text-sm"
-              >
-                下一步：定位规划 <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
-              </button>
-            </div>
-          </div>
-        );
       case 'positioning':
         return (
           <div className="flex-1 flex flex-col p-4 md:p-8">
             <div className="flex items-center justify-between mb-6 md:mb-8">
-              <button onClick={() => setCurrentStep('information')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
+              <button onClick={() => setCurrentStep('interview')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
                 <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
               </button>
               <div className="flex items-center gap-2 md:gap-3">
@@ -3053,13 +2957,17 @@ ${relevantKnowledge}`,
         .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
         .join('\n\n');
 
+      const materialsContext = state.uploadedMaterials.length > 0
+        ? `\n\n【已上传参考资料】：\n${state.uploadedMaterials.map((m, i) => `资料 ${i + 1}《${m.name}》：\n${m.content}`).join('\n\n')}\n\n访谈中如遇到与这些资料相关的点，可自然引用、核对或追问；不要一次性要求用户上传更多资料，只在聊到值得展开的点时引导补充。`
+        : '';
+
       await deepseek.chatStream({
         model: deepseek.MODELS.fast,
         knowledge_id: ZHIPU_KNOWLEDGE_ID,
         system: INTERVIEW_SYSTEM_PROMPT + (knowledgeContext ? `
 
 【重要：请严格遵循以下管理员提供的专业访谈方法论进行提问】：
-${knowledgeContext}` : ""),
+${knowledgeContext}` : "") + materialsContext,
         messages: [
           ...messages.map(m => ({
             role: m.role as 'user' | 'assistant',
@@ -3565,7 +3473,6 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
         <nav className="hidden md:flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
           {[
             { id: 'interview', label: '访谈', icon: User },
-            { id: 'information', label: '背景', icon: Building2 },
             { id: 'positioning', label: '定位', icon: Target },
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
@@ -3692,7 +3599,7 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
                   <Sparkles className="w-10 h-10 mb-6 opacity-50" />
                   <h2 className="text-3xl md:text-4xl font-bold mb-4">系统操作指南</h2>
                   <p className="text-gray-400 text-sm md:text-base leading-relaxed">
-                    四步深度定制，助力ToB创始人打造极具商业价值的个人品牌。
+                    三步深度定制，助力ToB创始人打造极具商业价值的个人品牌。
                   </p>
                 </div>
                 <div className="relative z-10 space-y-4">
@@ -3702,11 +3609,11 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-sm font-bold">02</div>
-                    <span className="text-sm font-medium">企业背景信息整合</span>
+                    <span className="text-sm font-medium">全案定位规划方案</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-sm font-bold">03</div>
-                    <span className="text-sm font-medium">全案定位规划方案</span>
+                    <span className="text-sm font-medium">爆款文案创作输出</span>
                   </div>
                 </div>
               </div>
@@ -3724,23 +3631,17 @@ ${state.uploadedMaterials.map(m => m.content).join('\n\n') || "（暂无）"}`,
                     {
                       step: "Step 01",
                       title: "深度访谈：挖掘灵魂底色",
-                      desc: "通过AI顾问的深度对话，挖掘您成长经历中的关键转折点、创业初衷及核心价值观。这是IP的灵魂所在。",
+                      desc: "通过AI顾问的深度对话，挖掘您成长经历中的关键转折点、创业初衷及核心价值观。访谈过程中可自然上传企业资料、案例截图等作为补充。这是IP的灵魂所在。",
                       img: "https://picsum.photos/seed/interview/800/400"
                     },
                     {
                       step: "Step 02",
-                      title: "背景整合：梳理商业逻辑",
-                      desc: "输入您的企业信息、核心业务及行业背景。我们将为您分析核心竞争力，确立IP的商业支撑点。",
-                      img: "https://picsum.photos/seed/business/800/400"
-                    },
-                    {
-                      step: "Step 03",
                       title: "定位规划：构建人设框架",
                       desc: "结合个人故事与商业背景，为您规划账号命名、Bio简介、核心人设及内容更新框架。",
                       img: "https://picsum.photos/seed/strategy/800/400"
                     },
                     {
-                      step: "Step 04",
+                      step: "Step 03",
                       title: "文案创作：打造传播钩子",
                       desc: "根据定位方案，为您创作高质量的短视频口播文案。包含强力钩子、高密度干货及情绪价值。",
                       img: "https://picsum.photos/seed/creative/800/400"
