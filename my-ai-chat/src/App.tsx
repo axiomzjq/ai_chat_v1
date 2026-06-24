@@ -2107,58 +2107,124 @@ ${relevantKnowledge}`,
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const recognitionRef = useRef<any>(null);
   const finalTranscriptRef = useRef('');
+  const listeningIntentRef = useRef(false);
+  const isSafariRef = useRef(false);
 
   useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'zh-CN';
+    // Safari 检测：WebKit Speech Recognition 在 Safari 下对 continuous=true 支持不佳
+    const ua = navigator.userAgent.toLowerCase();
+    isSafariRef.current = /^((?!chrome|android).)*safari/i.test(ua);
+  }, []);
 
-      recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = '';
-        let latestFinal = '';
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            latestFinal += result[0].transcript;
-          } else {
-            interimTranscript += result[0].transcript;
-          }
-        }
-        if (latestFinal) {
-          finalTranscriptRef.current += latestFinal;
-        }
-        const displayText = finalTranscriptRef.current + interimTranscript;
-        if (currentStep === 'interview') {
-          setInput(displayText);
-        } else if (currentStep === 'positioning') {
-          setPositioningFeedback(displayText);
-        }
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
+  useEffect(() => {
+    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      console.warn('[Speech] 当前浏览器不支持语音识别');
+      return;
     }
+
+    const recognition = new SpeechRecognitionAPI();
+    // Safari 对 continuous=true 支持不稳定，设置为 false 并手动重启
+    recognition.continuous = !isSafariRef.current;
+    recognition.interimResults = true;
+    recognition.lang = 'zh-CN';
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let latestFinal = '';
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          latestFinal += result[0].transcript;
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+      if (latestFinal) {
+        finalTranscriptRef.current += latestFinal;
+      }
+      const displayText = finalTranscriptRef.current + interimTranscript;
+      if (currentStep === 'interview') {
+        setInput(displayText);
+      } else if (currentStep === 'positioning') {
+        setPositioningFeedback(displayText);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('[Speech] error:', event.error);
+      // 用户主动停止不算错误
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        return;
+      }
+      // 其他错误给出提示
+      let msg = '';
+      switch (event.error) {
+        case 'not-allowed':
+          msg = '麦克风权限被拒绝，请在 Safari 设置中允许访问麦克风。';
+          break;
+        case 'audio-capture':
+          msg = '未检测到麦克风设备。';
+          break;
+        case 'network':
+          msg = '语音识别网络错误，请检查网络连接。';
+          break;
+        case 'service-not-allowed':
+          msg = '当前页面协议或域名不允许使用语音识别（Safari 要求 HTTPS）。';
+          break;
+        default:
+          msg = `语音识别出错：${event.error}`;
+      }
+      if (msg) alert(msg);
+      setIsListening(false);
+      listeningIntentRef.current = false;
+    };
+
+    recognition.onend = () => {
+      // Safari 下 continuous=false 时，每次说完一句话会自动结束
+      // 如果用户还想继续听，就重新启动
+      if (listeningIntentRef.current && isSafariRef.current) {
+        try {
+          setTimeout(() => recognition.start(), 100);
+          return;
+        } catch (err) {
+          console.error('[Speech] Safari restart failed:', err);
+        }
+      }
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      listeningIntentRef.current = false;
+      try { recognition.stop(); } catch { /* ignore */ }
+    };
   }, [currentStep]);
 
   const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert('当前浏览器不支持语音识别功能。');
+      return;
+    }
     if (isListening) {
-      recognitionRef.current?.stop();
+      listeningIntentRef.current = false;
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('[Speech] stop failed:', error);
+      }
     } else {
       try {
         finalTranscriptRef.current = '';
-        recognitionRef.current?.start();
+        listeningIntentRef.current = true;
+        recognitionRef.current.start();
         setIsListening(true);
-      } catch (error) {
-        console.error('Failed to start recognition:', error);
+      } catch (error: any) {
+        console.error('[Speech] start failed:', error);
+        alert('启动语音识别失败：' + (error?.message || '未知错误'));
+        setIsListening(false);
+        listeningIntentRef.current = false;
       }
     }
   };
