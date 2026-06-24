@@ -701,7 +701,7 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
   );
 }
 
-function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLogout: () => void, onDebugLogin?: () => void }) {
+function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: UserProfile, onLogout: () => void, onDebugLogin?: () => void, onSwitchToApp?: () => void }) {
   const [activeTab, setActiveTab] = useState<'users' | 'feedback' | 'knowledge'>(() => loadUIState().adminActiveTab);
 
   useEffect(() => {
@@ -1465,6 +1465,17 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* 管理员浮动切换按钮：切换到对话页面 */}
+        {user.role === 'admin' && onSwitchToApp && (
+          <button
+            onClick={onSwitchToApp}
+            className="fixed bottom-6 right-6 z-[150] w-14 h-14 bg-black text-white rounded-full shadow-2xl shadow-black/30 flex items-center justify-center hover:bg-gray-800 transition-all hover:scale-105"
+            title="切换到对话页面"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3558,6 +3569,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           // 调试：重置到登录页
           setState(initialState);
         }}
+        onSwitchToApp={() => setState(prev => ({ ...prev, view: 'app' }))}
       />
     );
   }
@@ -4008,6 +4020,17 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           </div>
         </div>
       </footer>
+
+      {/* 管理员浮动切换按钮：切换到管理后台 */}
+      {state.user?.role === 'admin' && (
+        <button
+          onClick={() => setState(prev => ({ ...prev, view: 'admin' }))}
+          className="fixed bottom-6 right-6 z-[150] w-14 h-14 bg-black text-white rounded-full shadow-2xl shadow-black/30 flex items-center justify-center hover:bg-gray-800 transition-all hover:scale-105"
+          title="切换到管理后台"
+        >
+          <LayoutDashboard className="w-5 h-5" />
+        </button>
+      )}
       </div>
     </ErrorBoundary>
   );
