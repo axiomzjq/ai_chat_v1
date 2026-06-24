@@ -2104,6 +2104,7 @@ ${relevantKnowledge}`,
     }
   };
   const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const recognitionRef = useRef<any>(null);
   const finalTranscriptRef = useRef('');
@@ -2111,6 +2112,10 @@ ${relevantKnowledge}`,
   const isSafariRef = useRef(false);
 
   useEffect(() => {
+    // 检测浏览器是否支持本地语音识别
+    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setIsSpeechSupported(!!SpeechRecognitionAPI);
+
     // Safari 检测：WebKit Speech Recognition 在 Safari 下对 continuous=true 支持不佳
     const ua = navigator.userAgent.toLowerCase();
     isSafariRef.current = /^((?!chrome|android).)*safari/i.test(ua);
@@ -2203,8 +2208,8 @@ ${relevantKnowledge}`,
   }, [currentStep]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert('当前浏览器不支持语音识别功能。');
+    if (!recognitionRef.current || !isSpeechSupported) {
+      // 当前浏览器不支持本地语音识别，静默返回，不打扰用户
       return;
     }
     if (isListening) {
@@ -2491,16 +2496,18 @@ ${relevantKnowledge}`,
                     placeholder="输入您的回答..."
                     className="w-full bg-white border border-gray-200 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
                   />
-                  <button 
-                    onClick={toggleListening}
-                    className={cn(
-                      "absolute right-12 md:right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all",
-                      isListening ? "text-red-500 bg-red-50 animate-pulse" : "text-gray-400 hover:text-black"
-                    )}
-                    title={isListening ? "正在倾听..." : "语音输入"}
-                  >
-                    {isListening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
-                  </button>
+                  {isSpeechSupported && (
+                    <button
+                      onClick={toggleListening}
+                      className={cn(
+                        "absolute right-12 md:right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all",
+                        isListening ? "text-red-500 bg-red-50 animate-pulse" : "text-gray-400 hover:text-black"
+                      )}
+                      title={isListening ? "正在倾听..." : "语音输入"}
+                    >
+                      {isListening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
+                    </button>
+                  )}
                   <button 
                     onClick={handleSendMessage}
                     disabled={isTyping || !input.trim()}
