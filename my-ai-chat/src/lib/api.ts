@@ -222,10 +222,17 @@ export async function getAdminUsers() {
   return res;
 }
 
-export async function updateUserSubscription(id: string, data: { subscription_days?: number; token_quota?: number }) {
+export async function updateUserSubscription(id: string, data: { subscription_days?: number; token_quota?: number; token_used?: number }) {
   const res = await request<any>(`/admin/users/${id}/subscription`, {
     method: 'PATCH',
     body: JSON.stringify(data),
+  });
+  return res;
+}
+
+export async function resetUserTokenUsed(id: string) {
+  const res = await request<any>(`/admin/users/${id}/reset-token-used`, {
+    method: 'POST',
   });
   return res;
 }

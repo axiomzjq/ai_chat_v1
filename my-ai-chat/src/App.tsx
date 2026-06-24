@@ -53,7 +53,9 @@ import {
   Trash2,
   Plus,
   FileDown,
-  Bug
+  Bug,
+  Settings,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -718,6 +720,11 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
   const [preCreating, setPreCreating] = useState(false);
   const [showPreCreateModal, setShowPreCreateModal] = useState(false);
 
+  // 用户编辑弹窗
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ subscription_days: 7, token_quota: 100000, token_used: 0 });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -804,28 +811,49 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
     }
   };
 
-  const handleUpdateSubscription = async (uid: string, days: number, tokens: number) => {
+  const openEditModal = (u: any) => {
+    setEditingUser(u);
+    setEditForm({
+      subscription_days: u.subscription_days || 0,
+      token_quota: u.token_quota || 100000,
+      token_used: u.token_used || 0,
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditingUser(null);
+    setSavingEdit(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    setSavingEdit(true);
     try {
-      await api.updateUserSubscription(uid, { subscription_days: days, token_quota: tokens });
-      console.log('[Admin] 订阅更新成功:', { uid, days, tokens });
+      await api.updateUserSubscription(editingUser.id, {
+        subscription_days: editForm.subscription_days,
+        token_quota: editForm.token_quota,
+        token_used: editForm.token_used,
+      });
+      alert('用户配置更新成功');
+      closeEditModal();
       const usersRes = await api.getAdminUsers();
       setUsers(usersRes.data || []);
     } catch (error: any) {
       alert('更新失败：' + (error.message || '未知错误'));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
   const handleResetTokenUsed = async (uid: string) => {
     if (!confirm('确定重置该用户的 Token 已用量为 0 吗？')) return;
     try {
-      await api.updateUserSubscription(uid, { token_quota: (users.find(u => u.id === uid)?.token_quota || 100000) });
-      // 后端目前没有单独重置 token_used 的接口，需要通过直接 SQL 或扩展 API
-      // 这里先前端提示，实际需要通过 admin API 实现
-      alert('Token 已用量重置功能待后端扩展');
+      await api.resetUserTokenUsed(uid);
+      alert('Token 已用量已重置为 0');
       const usersRes = await api.getAdminUsers();
       setUsers(usersRes.data || []);
     } catch (error: any) {
-      alert('更新失败：' + (error.message || '未知错误'));
+      alert('重置失败：' + (error.message || '未知错误'));
     }
   };
 
@@ -1057,13 +1085,7 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
                           <td className="px-6 py-4">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  defaultValue={u.subscription_days || 0}
-                                  onBlur={(e) => handleUpdateSubscription(u.id, parseInt(e.target.value) || 0, u.token_quota || 100000)}
-                                  className="w-16 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-black"
-                                />
+                                <span className="text-sm font-mono font-bold">{u.subscription_days || 0}</span>
                                 <span className="text-[10px] text-gray-400 font-bold">天</span>
                               </div>
                               <span className={cn("text-[10px] font-bold", isExpired ? "text-red-500" : "text-green-600")}>
@@ -1095,8 +1117,14 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <button
-                                onClick={() => handleUpdateRole(u.id, u.role)}
+                                onClick={() => openEditModal(u)}
                                 className="text-[10px] font-bold text-black hover:underline"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                onClick={() => handleUpdateRole(u.id, u.role)}
+                                className="text-[10px] font-bold text-gray-600 hover:underline"
                               >
                                 切换角色
                               </button>
@@ -1337,6 +1365,100 @@ function AdminPanel({ user, onLogout, onDebugLogin }: { user: UserProfile, onLog
                   >
                     {preCreating ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     {preCreating ? '创建中...' : '确认创建'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 编辑用户弹窗 */}
+        <AnimatePresence>
+          {editingUser && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={closeEditModal}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="absolute top-0 left-0 w-full h-2 bg-black" />
+                <button
+                  onClick={closeEditModal}
+                  className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
+                  <Settings className="w-8 h-8 text-black" />
+                </div>
+
+                <h2 className="text-2xl font-bold mb-2">编辑用户配置</h2>
+                <p className="text-gray-400 text-sm mb-8">
+                  {editingUser.email || editingUser.phone || '用户'} / {editingUser.role === 'admin' ? '管理员' : '普通用户'}
+                </p>
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">会员剩余天数</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editForm.subscription_days}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, subscription_days: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                    />
+                    <p className="text-[10px] text-gray-400">保存后会将订阅起始时间重置为当前时间，确保“剩余 X 天”显示准确。</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Token 额度</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={editForm.token_quota}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, token_quota: parseInt(e.target.value) || 0 }))}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Token 已用量</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={editForm.token_used}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, token_used: parseInt(e.target.value) || 0 }))}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-8">
+                  <button
+                    onClick={closeEditModal}
+                    className="flex-1 py-4 rounded-2xl font-bold text-sm border border-gray-100 hover:bg-gray-50 transition-all"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit}
+                    className="flex-1 bg-black text-white py-4 rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {savingEdit ? <Loader2 className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
+                    {savingEdit ? '保存中...' : '保存配置'}
                   </button>
                 </div>
               </motion.div>

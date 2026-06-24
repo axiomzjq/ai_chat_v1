@@ -61,7 +61,7 @@ router.post('/users/precreated', async (req, res, next) => {
 router.patch('/users/:id/subscription', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { subscription_days, token_quota } = req.body;
+    const { subscription_days, token_quota, token_used } = req.body;
 
     const updates = [];
     const values = [];
@@ -70,10 +70,17 @@ router.patch('/users/:id/subscription', async (req, res, next) => {
     if (subscription_days !== undefined) {
       updates.push(`subscription_days = $${idx++}`);
       values.push(parseInt(subscription_days) || 0);
+      // 重新调整剩余天数时，将订阅起始时间重置为当前时间，
+      // 这样 remainingDays = subscription_days 才是准确的
+      updates.push(`subscription_start_at = NOW()`);
     }
     if (token_quota !== undefined) {
       updates.push(`token_quota = $${idx++}`);
       values.push(parseInt(token_quota) || 0);
+    }
+    if (token_used !== undefined) {
+      updates.push(`token_used = $${idx++}`);
+      values.push(Math.max(0, parseInt(token_used) || 0));
     }
 
     if (updates.length === 0) {
@@ -84,6 +91,26 @@ router.patch('/users/:id/subscription', async (req, res, next) => {
     const result = await db.query(
       `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
       values
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ code: 4041, message: '用户不存在', data: null });
+    }
+
+    res.json({ code: 0, message: 'success', data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/users/:id/reset-token-used - 重置用户 Token 已用量为 0
+router.post('/users/:id/reset-token-used', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await db.query(
+      `UPDATE users SET token_used = 0, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id]
     );
 
     if (result.rowCount === 0) {
