@@ -237,65 +237,7 @@ const USER_AVATAR = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe
 
 // --- Components ---
 
-function StepIndicator({ currentStep, onStepClick, state }: { 
-  currentStep: Step, 
-  onStepClick: (step: Step) => void,
-  state: AppState 
-}) {
-  const steps: { id: Step; label: string; icon: any }[] = [
-    { id: 'interview', label: '访谈', icon: MessageSquare },
-    { id: 'positioning', label: '定位', icon: Target },
-    { id: 'copywriting', label: '文案', icon: PenTool },
-    { id: 'history', label: '历史', icon: CheckCircle2 },
-  ];
 
-
-
-  return (
-    <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-8 md:mb-12 px-2 md:px-4 overflow-x-auto no-scrollbar py-2">
-      {steps.map((step, index) => {
-        const Icon = step.icon;
-        const isActive = currentStep === step.id;
-        const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id, state.interviewReport);
-
-        return (
-          <React.Fragment key={step.id}>
-            <button 
-              onClick={() => unlocked && onStepClick(step.id)}
-              disabled={!unlocked}
-              className={cn(
-                "flex flex-col items-center relative z-10 flex-shrink-0 outline-none transition-all",
-                unlocked ? "cursor-pointer" : "cursor-not-allowed opacity-50"
-              )}
-            >
-              <div className={cn(
-                "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2",
-                isActive ? "bg-black text-white border-black scale-110 shadow-lg" : 
-                isPast ? "bg-green-500 text-white border-green-500" : 
-                "bg-white text-gray-400 border-gray-200"
-              )}>
-                {isPast ? <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" /> : <Icon className="w-5 h-5 md:w-6 md:h-6" />}
-              </div>
-              <span className={cn(
-                "mt-2 text-[10px] md:text-xs font-medium tracking-wider uppercase whitespace-nowrap",
-                isActive ? "text-black" : "text-gray-400"
-              )}>
-                {step.label}
-              </span>
-            </button>
-            {index < steps.length - 1 && (
-              <div className={cn(
-                "flex-1 h-0.5 min-w-[20px] md:mx-4 transition-all duration-500",
-                isPast ? "bg-green-500" : "bg-gray-200"
-              )} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-};
 
 const CollapsibleSection = ({ title, children, icon: Icon, defaultOpen = false }: { 
   title: string; 
@@ -3729,35 +3671,6 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           </div>
         </div>
 
-        <nav className="hidden md:flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
-          {[
-            { id: 'interview', label: '访谈', icon: User },
-            { id: 'positioning', label: '定位', icon: Target },
-            { id: 'copywriting', label: '文案', icon: PenTool },
-            { id: 'history', label: '历史', icon: Database },
-          ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport);
-            return (
-              <button
-                key={step.id}
-                onClick={() => unlocked && setCurrentStep(step.id as Step)}
-                disabled={!unlocked}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all",
-                  currentStep === step.id
-                    ? "bg-white text-black shadow-sm"
-                    : unlocked
-                      ? "text-gray-400 hover:text-black"
-                      : "text-gray-300 cursor-not-allowed"
-                )}
-              >
-                <step.icon size={14} />
-                {step.label}
-              </button>
-            );
-          })}
-        </nav>
-
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
           <button 
             onClick={() => setShowGuide(true)}
@@ -4068,12 +3981,6 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       </AnimatePresence>
 
       <main className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
-        <StepIndicator 
-          currentStep={currentStep} 
-          onStepClick={(step) => setCurrentStep(step)}
-          state={state}
-        />
-
         <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl md:shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden min-h-[500px] md:min-h-[600px] flex flex-col">
           {renderStep()}
         </div>
