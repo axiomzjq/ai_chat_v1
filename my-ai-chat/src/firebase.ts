@@ -29,6 +29,7 @@ export const firebaseInitError = _firebaseInitError;
 const AUTING_APP_ID = import.meta.env.VITE_AUTHING_APP_ID || '';
 const AUTING_DOMAIN = import.meta.env.VITE_AUTHING_DOMAIN || '';
 const AUTING_USER_POOL_ID = import.meta.env.VITE_AUTHING_USER_POOL_ID || '';
+const AUTING_APP_SECRET = import.meta.env.VITE_AUTHING_APP_SECRET || '';
 const AUTING_HOST = AUTING_DOMAIN ? `https://${AUTING_DOMAIN}` : '';
 
 console.log('[Auth] Env check:', {
@@ -36,6 +37,7 @@ console.log('[Auth] Env check:', {
   domain: AUTING_DOMAIN || '(empty)',
   host: AUTING_HOST || '(empty)',
   userPoolId: AUTING_USER_POOL_ID ? '***' + AUTING_USER_POOL_ID.slice(-6) : '(empty)',
+  hasSecret: !!AUTING_APP_SECRET,
   origin: typeof window !== 'undefined' ? window.location.origin : '(ssr)',
 });
 
@@ -56,6 +58,7 @@ try {
     authClient = new AuthenticationClient({
       appId: AUTING_APP_ID,
       appHost: AUTING_HOST,
+      secret: AUTING_APP_SECRET || undefined,
     });
     console.log('[Auth] Authing SDK initialized successfully');
   } else {
