@@ -237,7 +237,63 @@ const USER_AVATAR = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe
 
 // --- Components ---
 
+function StepIndicator({ currentStep, onStepClick, state }: {
+  currentStep: Step,
+  onStepClick: (step: Step) => void,
+  state: AppState
+}) {
+  const steps: { id: Step; label: string; icon: any }[] = [
+    { id: 'interview', label: '访谈', icon: MessageSquare },
+    { id: 'positioning', label: '定位', icon: Target },
+    { id: 'copywriting', label: '文案', icon: PenTool },
+    { id: 'history', label: '历史', icon: CheckCircle2 },
+  ];
 
+  return (
+    <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-8 md:mb-12 px-2 md:px-4 overflow-x-auto no-scrollbar py-2">
+      {steps.map((step, index) => {
+        const Icon = step.icon;
+        const isActive = currentStep === step.id;
+        const isPast = steps.findIndex(s => s.id === currentStep) > index;
+        const unlocked = isStepUnlocked(step.id, state.interviewReport);
+
+        return (
+          <React.Fragment key={step.id}>
+            <button
+              onClick={() => unlocked && onStepClick(step.id)}
+              disabled={!unlocked}
+              className={cn(
+                "flex flex-col items-center relative z-10 flex-shrink-0 outline-none transition-all",
+                unlocked ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+              )}
+            >
+              <div className={cn(
+                "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2",
+                isActive ? "bg-black text-white border-black scale-110 shadow-lg" :
+                isPast ? "bg-green-500 text-white border-green-500" :
+                "bg-white text-gray-400 border-gray-200"
+              )}>
+                {isPast ? <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" /> : <Icon className="w-5 h-5 md:w-6 md:h-6" />}
+              </div>
+              <span className={cn(
+                "mt-2 text-[10px] md:text-xs font-medium tracking-wider uppercase whitespace-nowrap",
+                isActive ? "text-black" : "text-gray-400"
+              )}>
+                {step.label}
+              </span>
+            </button>
+            {index < steps.length - 1 && (
+              <div className={cn(
+                "flex-1 h-0.5 min-w-[20px] md:mx-4 transition-all duration-500",
+                isPast ? "bg-green-500" : "bg-gray-200"
+              )} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
 
 const CollapsibleSection = ({ title, children, icon: Icon, defaultOpen = false }: { 
   title: string; 
@@ -1429,6 +1485,9 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>(_uiState.currentStep);
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
@@ -3671,6 +3730,35 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           </div>
         </div>
 
+        <nav className="hidden md:flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
+          {[
+            { id: 'interview', label: '访谈', icon: User },
+            { id: 'positioning', label: '定位', icon: Target },
+            { id: 'copywriting', label: '文案', icon: PenTool },
+            { id: 'history', label: '历史', icon: Database },
+          ].map((step) => {
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport);
+            return (
+              <button
+                key={step.id}
+                onClick={() => unlocked && setCurrentStep(step.id as Step)}
+                disabled={!unlocked}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                  currentStep === step.id
+                    ? "bg-white text-black shadow-sm"
+                    : unlocked
+                      ? "text-gray-400 hover:text-black"
+                      : "text-gray-300 cursor-not-allowed"
+                )}
+              >
+                <step.icon size={14} />
+                {step.label}
+              </button>
+            );
+          })}
+        </nav>
+
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
           <button 
             onClick={() => setShowGuide(true)}
@@ -3980,7 +4068,131 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         )}
       </AnimatePresence>
 
+      {/* 隐私政策弹窗 */}
+      {showPrivacy && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPrivacy(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">隐私政策</h2>
+              <button
+                onClick={() => setShowPrivacy(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">我们重视您的隐私，并承诺保护您的个人信息安全。</p>
+              <h3 className="font-bold text-gray-900 mb-2">1. 信息收集</h3>
+              <p className="mb-4">我们会收集您在使用服务时主动提供的信息，包括但不限于手机号、邮箱、对话内容等。</p>
+              <h3 className="font-bold text-gray-900 mb-2">2. 信息使用</h3>
+              <p className="mb-4">我们收集的信息仅用于提供服务、改进产品体验和发送重要通知。</p>
+              <h3 className="font-bold text-gray-900 mb-2">3. 信息保护</h3>
+              <p className="mb-4">我们采用行业标准的安全措施保护您的信息，防止未经授权的访问、泄露或丢失。</p>
+              <h3 className="font-bold text-gray-900 mb-2">4. 信息共享</h3>
+              <p>除法律要求或经您明确同意外，我们不会向第三方共享您的个人信息。</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* 服务条款弹窗 */}
+      {showTerms && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowTerms(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">服务条款</h2>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">欢迎使用 ToB 创始人 IP 定制系统。请仔细阅读以下服务条款。</p>
+              <h3 className="font-bold text-gray-900 mb-2">1. 服务说明</h3>
+              <p className="mb-4">我们提供基于 AI 的创始人 IP 定制服务，包括访谈、信息分析、定位建议和文案创作。</p>
+              <h3 className="font-bold text-gray-900 mb-2">2. 用户责任</h3>
+              <p className="mb-4">用户应保证提供的信息真实准确，并承担因使用服务产生的所有责任。</p>
+              <h3 className="font-bold text-gray-900 mb-2">3. 知识产权</h3>
+              <p className="mb-4">服务中生成的内容归用户所有，但我们保留使用 anonymized 数据改进模型的权利。</p>
+              <h3 className="font-bold text-gray-900 mb-2">4. 服务变更</h3>
+              <p>我们保留随时修改或中断服务的权利，恕不另行通知。</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* 技术支持弹窗 */}
+      {showSupport && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowSupport(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">技术支持</h2>
+              <button
+                onClick={() => setShowSupport(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">如需技术支持，请通过以下方式联系我们：</p>
+              <h3 className="font-bold text-gray-900 mb-2">📧 邮箱支持</h3>
+              <p className="mb-4">support@example.com</p>
+              <h3 className="font-bold text-gray-900 mb-2">💬 微信咨询</h3>
+              <p className="mb-4">请扫描页面底部的二维码或添加微信：wr930638246</p>
+              <h3 className="font-bold text-gray-900 mb-2">⏰ 服务时间</h3>
+              <p>工作日 9:00-18:00（北京时间）</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       <main className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
+        <StepIndicator
+          currentStep={currentStep}
+          onStepClick={(step) => setCurrentStep(step)}
+          state={state}
+        />
+
         <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl md:shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden min-h-[500px] md:min-h-[600px] flex flex-col">
           {renderStep()}
         </div>
@@ -3994,9 +4206,9 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
             <span className="text-[10px] md:text-xs font-medium uppercase tracking-widest">ToB Founder IP System © 2026</span>
           </div>
           <div className="flex items-center gap-4 md:gap-8 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-400">
-            <a href="#" className="hover:text-black transition-colors">隐私政策</a>
-            <a href="#" className="hover:text-black transition-colors">服务条款</a>
-            <a href="#" className="hover:text-black transition-colors">技术支持</a>
+            <button onClick={() => setShowPrivacy(true)} className="hover:text-black transition-colors">隐私政策</button>
+            <button onClick={() => setShowTerms(true)} className="hover:text-black transition-colors">服务条款</button>
+            <button onClick={() => setShowSupport(true)} className="hover:text-black transition-colors">技术支持</button>
           </div>
         </div>
       </footer>
