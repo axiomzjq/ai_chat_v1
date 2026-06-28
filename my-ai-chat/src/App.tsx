@@ -2245,12 +2245,11 @@ ${relevantKnowledge}`,
                       "max-w-[75%] md:max-w-[70%] p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm leading-relaxed relative",
                       m.role === 'user' ? "bg-black text-white rounded-tr-none shadow-lg" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm"
                     )}>
-                      {m.role === 'model' && (
-                        <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
+                      <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
                         <ReactMarkdown>
                           {m.text}
                         </ReactMarkdown>
-                        {isLastModel && (
+                        {m.role === 'model' && isLastModel && (
                           <span className="inline-flex items-center gap-[3px] ml-1 h-5">
                             <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
                             <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
@@ -2258,7 +2257,6 @@ ${relevantKnowledge}`,
                           </span>
                         )}
                       </div>
-                      )}
                     </div>
                   </motion.div>
                 );
