@@ -78,8 +78,9 @@ import {
 type Step = 'interview' | 'positioning' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-const isStepUnlocked = (stepId: Step, interviewReport: string) => {
+const isStepUnlocked = (stepId: Step, interviewReport: string, userRole?: 'user' | 'admin') => {
   if (stepId === 'interview' || stepId === 'history') return true;
+  if (userRole === 'admin') return true;
   return !!interviewReport;
 };
 type View = 'login' | 'app' | 'admin';
@@ -234,7 +235,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
         const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id, state.interviewReport);
+        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.user?.role);
 
         return (
           <React.Fragment key={step.id}>
@@ -2199,7 +2200,7 @@ ${relevantKnowledge}`,
               </div>
               <button
                 onClick={() => {
-                  if (isStepUnlocked('positioning', state.interviewReport)) {
+                  if (isStepUnlocked('positioning', state.interviewReport, state.user?.role)) {
                     setCurrentStep('positioning');
                   } else {
                     alert('请先完成访谈并生成深度报告');
@@ -2207,7 +2208,7 @@ ${relevantKnowledge}`,
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('positioning', state.interviewReport)
+                  isStepUnlocked('positioning', state.interviewReport, state.user?.role)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -3552,7 +3553,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport);
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.user?.role);
             return (
               <button
                 key={step.id}
