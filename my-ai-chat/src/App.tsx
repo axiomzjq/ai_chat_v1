@@ -2347,15 +2347,9 @@ ${relevantKnowledge}`,
                 </div>
                 {!state.interviewReport && !isGeneratingDetailedReport && messages.length > 1 && (
                   <div className="flex flex-col gap-2">
-                    {!canEndInterview() ? (
-                      <p className="text-[10px] md:text-xs text-gray-400 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，至少完成 15 轮或等待 AI 结束提示后方可生成报告
-                      </p>
-                    ) : (
-                      <p className="text-[10px] md:text-xs text-amber-600 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，可以生成深度报告了
-                      </p>
-                    )}
+                    <p className="text-[10px] md:text-xs text-gray-400 font-medium">
+                      💡 等待 AI 顾问完成访谈后，可生成深度报告
+                    </p>
                     <button
                       onClick={() => generateDetailedInterviewReport()}
                       disabled={!canEndInterview()}
@@ -3016,11 +3010,9 @@ ${relevantKnowledge}`,
   };
 
   const canEndInterview = () => {
-    const rounds = Math.floor((messages.length - 1) / 2);
-    const aiSaidEnd = messages.some(m =>
+    return messages.some(m =>
       m.role === 'model' && m.text.includes('<!-- INTERVIEW_ENDED_BY_AI -->')
     );
-    return rounds >= 15 || aiSaidEnd;
   };
 
   const handleSendMessage = async () => {
