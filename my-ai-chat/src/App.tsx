@@ -75,13 +75,16 @@ import {
 
 // --- Types ---
 
-type Step = 'interview' | 'positioning' | 'copywriting' | 'history';
+type Step = 'interview' | 'information' | 'positioning' | 'topic' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-const isStepUnlocked = (stepId: Step, interviewReport: string, userRole?: 'user' | 'admin') => {
+const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], userRole?: 'user' | 'admin') => {
   if (stepId === 'interview' || stepId === 'history') return true;
   if (userRole === 'admin') return true;
-  return !!interviewReport;
+  if (stepId === 'positioning') return !!interviewReport;
+  if (stepId === 'topic') return !!interviewReport; // 需要访谈报告
+  if (stepId === 'copywriting') return !!topicPool.length; // 需要选题池
+  return false;
 };
 type View = 'login' | 'app' | 'admin';
 
@@ -143,6 +146,8 @@ interface AppState {
   positioningOptions: string[];
   selectedPositioningIndex: number | null;
   positioningReport: string;
+  topicPool: any[]; // 选题池
+  selectedTopic: any | null; // 选中的选题
   copywritingOutput: {
     titles: string[];
     selectedTitleIndex: number | null;
@@ -235,7 +240,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
         const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.user?.role);
+        const unlocked = isStepUnlocked(step.id, state.interviewReport, [], state.user?.role);
 
         return (
           <React.Fragment key={step.id}>
@@ -387,6 +392,8 @@ const initialState: AppState = {
   positioningOptions: [],
   selectedPositioningIndex: null,
   positioningReport: '',
+  topicPool: [],
+  selectedTopic: null,
   copywritingOutput: {
     titles: [],
     selectedTitleIndex: null,
@@ -1469,6 +1476,8 @@ export default function App() {
   const [showTerms, setShowTerms] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>(_uiState.currentStep);
+  const [topicStage, setTopicStage] = useState(1); // 当前选题阶段标签
+  const [selectedTopic, setSelectedTopic] = useState<any>(null); // 选中的选题
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
     let parsedHistory: HistoryItem[] = [];
@@ -2200,7 +2209,7 @@ ${relevantKnowledge}`,
               </div>
               <button
                 onClick={() => {
-                  if (isStepUnlocked('positioning', state.interviewReport, state.user?.role)) {
+                  if (isStepUnlocked('positioning', state.interviewReport, [], state.user?.role)) {
                     setCurrentStep('positioning');
                   } else {
                     alert('请先完成访谈并生成深度报告');
@@ -2208,7 +2217,7 @@ ${relevantKnowledge}`,
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('positioning', state.interviewReport, state.user?.role)
+                  isStepUnlocked('positioning', state.interviewReport, [], state.user?.role)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -2489,11 +2498,11 @@ ${relevantKnowledge}`,
                     {isGeneratingPositioning ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
                     生成三版定位方案
                   </button>
-                  <button 
-                    onClick={() => setCurrentStep('copywriting')}
+                  <button
+                    onClick={() => setCurrentStep('topic')}
                     className="w-full text-gray-400 hover:text-black transition-colors text-xs font-bold py-2"
                   >
-                    跳过此步，直接进入文案创作
+                    跳过此步，直接进入选题创作
                   </button>
                 </div>
               )}
@@ -2639,12 +2648,12 @@ ${relevantKnowledge}`,
 
                         <div className="bg-black p-8 rounded-[32px] text-white shadow-2xl space-y-6">
                           <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Next Step</h4>
-                          <h3 className="text-xl font-bold leading-tight">方案已确认？<br/>立即开始文案创作</h3>
+                          <h3 className="text-xl font-bold leading-tight">方案已确认？<br/>立即开始选题规划</h3>
                           <button
-                            onClick={() => setCurrentStep('copywriting')}
+                            onClick={() => setCurrentStep('topic')}
                             className="w-full py-4 bg-white text-black rounded-2xl text-xs font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
                           >
-                            进入文案顾问 <ArrowRight size={14} />
+                            进入选题顾问 <ArrowRight size={14} />
                           </button>
                         </div>
                       </div>
@@ -2655,11 +2664,285 @@ ${relevantKnowledge}`,
             </div>
           </div>
         );
-      case 'copywriting':
+      case 'topic': {
+        // 选题阶段 - Demo 页面
+        const demoStages = [
+          {
+            stage: 1,
+            name: '0-30天：建立可信主线',
+            goal: '让用户先记住“万智是谁、在做什么、为什么值得持续关注”。主打真实过程、人设反差、核心观点和两个项目的从0到1。',
+            topics: [
+              {
+                id: 'WZ-S1-001',
+                title: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
+                description: '围绕“AI商业落地总开场”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
+                hookType: '反差判断型',
+                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
+                coreConflict: 'AI工具 vs AI商业落地的认知差异',
+                hook3s: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '如果你也在做AI落地或创业项目，可以私信“交流”。',
+                platform: '抖音 + 视频号 + 小红书',
+                priority: 'P0',
+                source: '定位报告-AI商业落地主线',
+                status: 'approved'
+              },
+              {
+                id: 'WZ-S1-002',
+                title: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
+                description: '围绕“身份反差”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
+                hookType: '反差判断型',
+                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
+                coreConflict: '00后 vs 两个完全不同领域的项目',
+                hook3s: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：身份反差。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
+                platform: '抖音 + 小红书 + 视频号',
+                priority: 'P0',
+                source: '定位报告-兰亭茶境线',
+                status: 'approved'
+              },
+              {
+                id: 'WZ-S1-003',
+                title: 'AI茶馆这个想法，一开始其实只是普通茶馆',
+                description: '围绕“兰亭茶境起源”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
+                hookType: '观点金句型',
+                hookPoint: '输出可被记住的行业判断，强化账号主张。',
+                coreConflict: '普通茶馆 vs AI茶馆的演变',
+                hook3s: 'AI茶馆这个想法，一开始其实只是普通茶馆',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：兰亭茶境起源。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
+                platform: '抖音 + 小红书 + 视频号',
+                priority: 'P0',
+                source: '定位报告-兰亭茶境线',
+                status: 'planned'
+              }
+            ]
+          },
+          {
+            stage: 2,
+            name: '31-60天：建立专业信任',
+            goal: '从过程记录进入方法论沉淀，证明你懂业务、懂内容、懂AI落地。重点区分高传播切口与高转化切口。',
+            topics: [
+              {
+                id: 'WZ-S2-001',
+                title: '我做创始人IP系统后发现，老板最缺的不是文案',
+                description: '围绕“创始人IP洞察”展开，服务方法论输出 + 专业信任建立。',
+                hookType: '反差判断型',
+                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
+                coreConflict: '老板缺的不是文案，而是IP系统',
+                hook3s: '我做创始人IP系统后发现，老板最缺的不是文案',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：创始人IP洞察。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '想做创始人IP诊断，可以私信“IP”。',
+                platform: '视频号 + 公众号 + 抖音',
+                priority: 'P0',
+                source: '定位报告-创始人IP线',
+                status: 'approved'
+              },
+              {
+                id: 'WZ-S2-002',
+                title: '两个团队解散后，我才知道什么人适合一起创业',
+                description: '围绕“团队失败复盘”展开，服务方法论输出 + 专业信任建立。',
+                hookType: '踩坑复盘型',
+                hookPoint: '从失败或风险切入，呈现清醒判断和项目负责人意识。',
+                coreConflict: '团队解散后的合伙人筛选反思',
+                hook3s: '两个团队解散后，我才知道什么人适合一起创业',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：团队失败复盘。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '你也在找同频伙伴，可以评论你现在最缺哪类人。',
+                platform: '抖音 + 视频号',
+                priority: 'P0',
+                source: '访谈报告-团队解散与合伙人筛选经历',
+                status: 'planned'
+              }
+            ]
+          },
+          {
+            stage: 3,
+            name: '61-90天：公开验证与轻转化',
+            goal: '用内测反馈、用户体验、会员样本、项目进展和真实案例证明两个项目有效，开始引导咨询、会员、合作。',
+            topics: [
+              {
+                id: 'WZ-S3-001',
+                title: '兰亭茶境内测30天，我们收到了127条真实反馈',
+                description: '围绕“内测反馈”展开，服务案例验证 + 反馈证明。',
+                hookType: '案例结果型',
+                hookPoint: '用真实数据证明项目有效，建立信任。',
+                coreConflict: '内测数据 vs 公众认知',
+                hook3s: '兰亭茶境内测30天，我们收到了127条真实反馈',
+                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：内测反馈价值。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
+                platform: '视频号 + 抖音',
+                priority: 'P0',
+                source: '定位报告-兰亭茶境线',
+                status: 'approved'
+              }
+            ]
+          },
+          {
+            stage: 4,
+            name: '90天后：沉淀案例与扩展B端合作',
+            goal: '沉淀行业案例、对外空间方案、政府/园区合作、渠道伙伴和项目共创能力，形成更高客单的ToB合作入口。',
+            topics: [
+              {
+                id: 'WZ-S4-001',
+                title: '我们从AI茶空间项目中总结了3个ToB合作模式',
+                description: '围绕“B端合作模式”展开，服务行业案例 + B端合作。',
+                hookType: '机制证明型',
+                hookPoint: '用具体合作模式证明商业可行性。',
+                coreConflict: 'ToC 项目 vs ToB 合作的延伸',
+                hook3s: '我们从AI茶空间项目中总结了3个ToB合作模式',
+                opening: '用一个真实项目节点切入：先交代“我们现在遇到/正在验证的事”，再抛出核心判断：B端合作模式。',
+                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
+                cta: '有ToB合作意向，可以私信“合作”。',
+                platform: '视频号 + 公众号',
+                priority: 'P0',
+                source: '定位报告-兰亭茶境线',
+                status: 'approved'
+              }
+            ]
+          }
+        ];
+
+        const currentStageData = demoStages.find(s => s.stage === topicStage) || demoStages[0];
+
         return (
           <div className="flex-1 flex flex-col p-4 md:p-8">
             <div className="flex items-center justify-between mb-6 md:mb-8">
               <button onClick={() => setCurrentStep('positioning')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
+                <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
+              </button>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
+                  <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <h2 className="text-base md:text-xl font-bold">选题顾问：内容规划</h2>
+              </div>
+              <div className="w-10 md:w-20" />
+            </div>
+
+            {/* 阶段标签页 */}
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
+              {demoStages.map((stage) => (
+                <button
+                  key={stage.stage}
+                  onClick={() => setTopicStage(stage.stage)}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all",
+                    topicStage === stage.stage
+                      ? "bg-black text-white"
+                      : "bg-gray-50 text-gray-400 hover:text-black"
+                  )}
+                >
+                  阶段{['一', '二', '三', '四'][stage.stage - 1]}
+                </button>
+              ))}
+            </div>
+
+            {/* 阶段摘要卡 */}
+            <div className="bg-gray-50 rounded-2xl p-6 mb-6">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">
+                阶段{['一', '二', '三', '四'][currentStageData.stage - 1]}｜{currentStageData.name}
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">{currentStageData.goal}</p>
+              <div className="flex items-center gap-4 text-[10px] text-gray-400">
+                <span>选题数量：{currentStageData.topics.length} 条</span>
+                <span>P0 选题：{currentStageData.topics.filter(t => t.priority === 'P0').length} 条</span>
+              </div>
+            </div>
+
+            {/* 选题列表 */}
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {currentStageData.topics.map((topic) => (
+                <div
+                  key={topic.id}
+                  onClick={() => {
+                    setSelectedTopic(topic);
+                    setState(prev => ({ ...prev, selectedTopic: topic, copywritingTopic: topic.title }));
+                    setCurrentStep('copywriting');
+                  }}
+                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-mono text-gray-400">{topic.id}</span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                          topic.priority === 'P0' ? "bg-red-100 text-red-600" :
+                          topic.priority === 'P1' ? "bg-amber-100 text-amber-600" :
+                          "bg-gray-100 text-gray-600"
+                        )}>
+                          {topic.priority}
+                        </span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                          topic.status === 'approved' ? "bg-green-100 text-green-600" :
+                          topic.status === 'planned' ? "bg-blue-100 text-blue-600" :
+                          "bg-gray-100 text-gray-600"
+                        )}>
+                          {topic.status === 'approved' ? '已批准' : topic.status === 'planned' ? '计划中' : '已使用'}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">{topic.title}</h4>
+                      <p className="text-xs text-gray-500 mb-3">{topic.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-gray-600">
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-400 font-bold whitespace-nowrap">爆款类型：</span>
+                      <span>{topic.hookType}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-400 font-bold whitespace-nowrap">3秒钩子：</span>
+                      <span className="font-medium">{topic.hook3s}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-400 font-bold whitespace-nowrap">平台：</span>
+                      <span>{topic.platform}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400">来源：{topic.source}</span>
+                    <button className="px-4 py-2 bg-black text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-all">
+                      进入文案生成
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={() => alert('Demo 模式：选题池已预置')}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-all shadow-md text-sm"
+              >
+                <Sparkles size={16} className="inline mr-2" />
+                生成选题池（Demo）
+              </button>
+              <button
+                onClick={() => setCurrentStep('copywriting')}
+                className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all text-sm"
+              >
+                进入文案
+              </button>
+            </div>
+          </div>
+        );
+      }
+      case 'copywriting':
+        return (
+          <div className="flex-1 flex flex-col p-4 md:p-8">
+            <div className="flex items-center justify-between mb-6 md:mb-8">
+              <button onClick={() => setCurrentStep('topic')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
                 <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
               </button>
               <div className="flex items-center gap-2 md:gap-3">
@@ -3551,7 +3834,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.user?.role);
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, [], state.user?.role);
             return (
               <button
                 key={step.id}
