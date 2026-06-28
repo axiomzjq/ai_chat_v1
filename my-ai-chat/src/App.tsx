@@ -31,9 +31,6 @@ import {
   MessageSquare,
   LayoutDashboard,
   Video,
-  Volume2,
-  Mic,
-  MicOff,
   Copy,
   Download,
   Database,
@@ -163,24 +160,6 @@ interface AppState {
 
 // --- AI Service ---
 
-// TTS: 使用浏览器原生 SpeechSynthesis（智谱AI 无 TTS 能力）
-
-const playTTS = async (text: string, onStart?: () => void, onEnd?: () => void) => {
-  try {
-    onStart?.();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onEnd?.();
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  } catch (error) {
-    console.error("TTS Error:", error);
-    onEnd?.();
-  }
-};
 const organizeContentWithAI = async (rawText: string) => {
   if (!rawText.trim()) return "";
   try {
@@ -2104,136 +2083,6 @@ ${relevantKnowledge}`,
       URL.revokeObjectURL(url);
     }
   };
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const finalTranscriptRef = useRef('');
-  const listeningIntentRef = useRef(false);
-  const isSafariRef = useRef(false);
-
-  useEffect(() => {
-    // 检测浏览器是否支持本地语音识别
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    setIsSpeechSupported(!!SpeechRecognitionAPI);
-
-    // Safari 检测：WebKit Speech Recognition 在 Safari 下对 continuous=true 支持不佳
-    const ua = navigator.userAgent.toLowerCase();
-    isSafariRef.current = /^((?!chrome|android).)*safari/i.test(ua);
-  }, []);
-
-  useEffect(() => {
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionAPI) {
-      console.warn('[Speech] 当前浏览器不支持语音识别');
-      return;
-    }
-
-    const recognition = new SpeechRecognitionAPI();
-    // Safari 对 continuous=true 支持不稳定，设置为 false 并手动重启
-    recognition.continuous = !isSafariRef.current;
-    recognition.interimResults = true;
-    recognition.lang = 'zh-CN';
-
-    recognition.onresult = (event: any) => {
-      let interimTranscript = '';
-      let latestFinal = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          latestFinal += result[0].transcript;
-        } else {
-          interimTranscript += result[0].transcript;
-        }
-      }
-      if (latestFinal) {
-        finalTranscriptRef.current += latestFinal;
-      }
-      const displayText = finalTranscriptRef.current + interimTranscript;
-      if (currentStep === 'interview') {
-        setInput(displayText);
-      } else if (currentStep === 'positioning') {
-        setPositioningFeedback(displayText);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error('[Speech] error:', event.error);
-      // 用户主动停止不算错误
-      if (event.error === 'aborted' || event.error === 'no-speech') {
-        return;
-      }
-      // 其他错误给出提示
-      let msg = '';
-      switch (event.error) {
-        case 'not-allowed':
-          msg = '麦克风权限被拒绝，请在 Safari 设置中允许访问麦克风。';
-          break;
-        case 'audio-capture':
-          msg = '未检测到麦克风设备。';
-          break;
-        case 'network':
-          msg = '语音识别网络错误，请检查网络连接。';
-          break;
-        case 'service-not-allowed':
-          msg = '当前页面协议或域名不允许使用语音识别（Safari 要求 HTTPS）。';
-          break;
-        default:
-          msg = `语音识别出错：${event.error}`;
-      }
-      if (msg) alert(msg);
-      setIsListening(false);
-      listeningIntentRef.current = false;
-    };
-
-    recognition.onend = () => {
-      // Safari 下 continuous=false 时，每次说完一句话会自动结束
-      // 如果用户还想继续听，就重新启动
-      if (listeningIntentRef.current && isSafariRef.current) {
-        try {
-          setTimeout(() => recognition.start(), 100);
-          return;
-        } catch (err) {
-          console.error('[Speech] Safari restart failed:', err);
-        }
-      }
-      setIsListening(false);
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      listeningIntentRef.current = false;
-      try { recognition.stop(); } catch { /* ignore */ }
-    };
-  }, [currentStep]);
-
-  const toggleListening = () => {
-    if (!recognitionRef.current || !isSpeechSupported) {
-      // 当前浏览器不支持本地语音识别，静默返回，不打扰用户
-      return;
-    }
-    if (isListening) {
-      listeningIntentRef.current = false;
-      try {
-        recognitionRef.current.stop();
-      } catch (error) {
-        console.error('[Speech] stop failed:', error);
-      }
-    } else {
-      try {
-        finalTranscriptRef.current = '';
-        listeningIntentRef.current = true;
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch (error: any) {
-        console.error('[Speech] start failed:', error);
-        alert('启动语音识别失败：' + (error?.message || '未知错误'));
-        setIsListening(false);
-        listeningIntentRef.current = false;
-      }
-    }
-  };
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -2396,17 +2245,7 @@ ${relevantKnowledge}`,
                       m.role === 'user' ? "bg-black text-white rounded-tr-none shadow-lg" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm"
                     )}>
                       {m.role === 'model' && (
-                        <button
-                          onClick={() => handlePlayVoice(m.text, i)}
-                          className={cn(
-                            "absolute -right-8 top-0 p-1.5 rounded-full transition-all",
-                            playingIndex === i ? "bg-black text-white animate-pulse" : "bg-gray-100 text-gray-400 hover:text-black opacity-0 group-hover:opacity-100"
-                          )}
-                        >
-                          {playingIndex === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
-                        </button>
-                      )}
-                      <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
+                        <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
                         <ReactMarkdown>
                           {m.text}
                         </ReactMarkdown>
@@ -2418,6 +2257,7 @@ ${relevantKnowledge}`,
                           </span>
                         )}
                       </div>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -2497,19 +2337,7 @@ ${relevantKnowledge}`,
                     placeholder="输入您的回答..."
                     className="w-full bg-white border border-gray-200 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
                   />
-                  {isSpeechSupported && (
-                    <button
-                      onClick={toggleListening}
-                      className={cn(
-                        "absolute right-12 md:right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all",
-                        isListening ? "text-red-500 bg-red-50 animate-pulse" : "text-gray-400 hover:text-black"
-                      )}
-                      title={isListening ? "正在倾听..." : "语音输入"}
-                    >
-                      {isListening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
-                    </button>
-                  )}
-                  <button 
+                  <button
                     onClick={handleSendMessage}
                     disabled={isTyping || !input.trim()}
                     className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2 bg-black text-white rounded-lg md:rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all shadow-md"
@@ -3282,11 +3110,6 @@ ${knowledgeContext}` : "") + materialsContext,
       });
       setIsTyping(false);
     }
-  };
-
-  const handlePlayVoice = (text: string, index: number) => {
-    if (playingIndex === index) return;
-    playTTS(text, () => setPlayingIndex(index), () => setPlayingIndex(null));
   };
 
   // --- Information Agent State ---
