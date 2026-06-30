@@ -230,6 +230,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
   const steps: { id: Step; label: string; icon: any }[] = [
     { id: 'interview', label: '访谈', icon: MessageSquare },
     { id: 'positioning', label: '定位', icon: Target },
+    { id: 'topic', label: '选题', icon: FileText },
     { id: 'copywriting', label: '文案', icon: PenTool },
     { id: 'history', label: '历史', icon: CheckCircle2 },
   ];
@@ -2671,53 +2672,38 @@ ${relevantKnowledge}`,
             stage: 1,
             name: '0-30天：建立可信主线',
             goal: '让用户先记住“万智是谁、在做什么、为什么值得持续关注”。主打真实过程、人设反差、核心观点和两个项目的从0到1。',
+            coreTask: '破圈认知 + 人设建立 + 项目主线解释',
+            platform: '抖音/视频号为主，小红书同步图文笔记',
+            style: '真实过程分享、轻反差、少卖货、多建立持续关注理由',
+            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
+            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
             topics: [
               {
                 id: 'WZ-S1-001',
                 title: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
-                description: '围绕“AI商业落地总开场”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
                 hookType: '反差判断型',
-                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
-                coreConflict: 'AI工具 vs AI商业落地的认知差异',
                 hook3s: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '如果你也在做AI落地或创业项目，可以私信“交流”。',
                 platform: '抖音 + 视频号 + 小红书',
                 priority: 'P0',
-                source: '定位报告-AI商业落地主线',
                 status: 'approved'
               },
               {
                 id: 'WZ-S1-002',
                 title: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
-                description: '围绕“身份反差”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
                 hookType: '反差判断型',
-                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
-                coreConflict: '00后 vs 两个完全不同领域的项目',
                 hook3s: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：身份反差。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
                 platform: '抖音 + 小红书 + 视频号',
                 priority: 'P0',
-                source: '定位报告-兰亭茶境线',
                 status: 'approved'
               },
               {
                 id: 'WZ-S1-003',
                 title: 'AI茶馆这个想法，一开始其实只是普通茶馆',
-                description: '围绕“兰亭茶境起源”展开，服务破圈认知 + 人设建立 + 项目主线解释。',
                 hookType: '观点金句型',
-                hookPoint: '输出可被记住的行业判断，强化账号主张。',
-                coreConflict: '普通茶馆 vs AI茶馆的演变',
                 hook3s: 'AI茶馆这个想法，一开始其实只是普通茶馆',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：兰亭茶境起源。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
                 platform: '抖音 + 小红书 + 视频号',
                 priority: 'P0',
-                source: '定位报告-兰亭茶境线',
                 status: 'planned'
               }
             ]
@@ -2726,37 +2712,29 @@ ${relevantKnowledge}`,
             stage: 2,
             name: '31-60天：建立专业信任',
             goal: '从过程记录进入方法论沉淀，证明你懂业务、懂内容、懂AI落地。重点区分高传播切口与高转化切口。',
+            coreTask: '方法论输出 + 客户教育 + 专业信任',
+            platform: '视频号/公众号承接深度，小红书/抖音做切口传播',
+            style: '判断清晰、案例带路、客户教育，不装专家',
+            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
+            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
             topics: [
               {
                 id: 'WZ-S2-001',
                 title: '我做创始人IP系统后发现，老板最缺的不是文案',
-                description: '围绕“创始人IP洞察”展开，服务方法论输出 + 专业信任建立。',
                 hookType: '反差判断型',
-                hookPoint: '用“很多人以为/其实真正关键是”的反差打破常规认知。',
-                coreConflict: '老板缺的不是文案，而是IP系统',
                 hook3s: '我做创始人IP系统后发现，老板最缺的不是文案',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：创始人IP洞察。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '想做创始人IP诊断，可以私信“IP”。',
                 platform: '视频号 + 公众号 + 抖音',
                 priority: 'P0',
-                source: '定位报告-创始人IP线',
                 status: 'approved'
               },
               {
                 id: 'WZ-S2-002',
                 title: '两个团队解散后，我才知道什么人适合一起创业',
-                description: '围绕“团队失败复盘”展开，服务方法论输出 + 专业信任建立。',
                 hookType: '踩坑复盘型',
-                hookPoint: '从失败或风险切入，呈现清醒判断和项目负责人意识。',
-                coreConflict: '团队解散后的合伙人筛选反思',
                 hook3s: '两个团队解散后，我才知道什么人适合一起创业',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：团队失败复盘。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '你也在找同频伙伴，可以评论你现在最缺哪类人。',
                 platform: '抖音 + 视频号',
                 priority: 'P0',
-                source: '访谈报告-团队解散与合伙人筛选经历',
                 status: 'planned'
               }
             ]
@@ -2765,21 +2743,20 @@ ${relevantKnowledge}`,
             stage: 3,
             name: '61-90天：公开验证与轻转化',
             goal: '用内测反馈、用户体验、会员样本、项目进展和真实案例证明两个项目有效，开始引导咨询、会员、合作。',
+            coreTask: '案例验证 + 反馈证明 + 会员转化',
+            platform: '视频号/抖音发布证据型短视频，公众号沉淀复盘，小红书做体验反馈',
+            style: '真实反馈、前后变化、轻转化、避免夸大承诺',
+            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
+            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
             topics: [
               {
                 id: 'WZ-S3-001',
                 title: '兰亭茶境内测30天，我们收到了127条真实反馈',
-                description: '围绕“内测反馈”展开，服务案例验证 + 反馈证明。',
                 hookType: '案例结果型',
-                hookPoint: '用真实数据证明项目有效，建立信任。',
-                coreConflict: '内测数据 vs 公众认知',
                 hook3s: '兰亭茶境内测30天，我们收到了127条真实反馈',
-                opening: '用一个真实项目节点切入：先交代“我现在遇到/正在验证的事”，再抛出核心判断：内测反馈价值。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '想参与兰亭茶境内测/会员体验，可以私信“茶境”。',
                 platform: '视频号 + 抖音',
                 priority: 'P0',
-                source: '定位报告-兰亭茶境线',
                 status: 'approved'
               }
             ]
@@ -2788,21 +2765,20 @@ ${relevantKnowledge}`,
             stage: 4,
             name: '90天后：沉淀案例与扩展B端合作',
             goal: '沉淀行业案例、对外空间方案、政府/园区合作、渠道伙伴和项目共创能力，形成更高客单的ToB合作入口。',
+            coreTask: '行业案例 + B端合作 + 项目共创 + 渠道招募',
+            platform: '视频号/公众号为主，配合线下活动、私域资料包、项目路演内容',
+            style: '案例沉淀、合作说明、资源筛选、稳健转化',
+            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
+            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
             topics: [
               {
                 id: 'WZ-S4-001',
                 title: '我们从AI茶空间项目中总结了3个ToB合作模式',
-                description: '围绕“B端合作模式”展开，服务行业案例 + B端合作。',
                 hookType: '机制证明型',
-                hookPoint: '用具体合作模式证明商业可行性。',
-                coreConflict: 'ToC 项目 vs ToB 合作的延伸',
                 hook3s: '我们从AI茶空间项目中总结了3个ToB合作模式',
-                opening: '用一个真实项目节点切入：先交代“我们现在遇到/正在验证的事”，再抛出核心判断：B端合作模式。',
-                closing: '收束到一句判断：这条不是讲概念，而是提醒创业者/老板先看真实场景、真实用户和真实结果。',
-                cta: '有ToB合作意向，可以私信“合作”。',
                 platform: '视频号 + 公众号',
                 priority: 'P0',
-                source: '定位报告-兰亭茶境线',
                 status: 'approved'
               }
             ]
@@ -2813,7 +2789,7 @@ ${relevantKnowledge}`,
 
         return (
           <div className="flex-1 flex flex-col p-4 md:p-8">
-            <div className="flex items-center justify-between mb-6 md:mb-8">
+            <div className="flex items-center justify-between mb-4">
               <button onClick={() => setCurrentStep('positioning')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
                 <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
               </button>
@@ -2826,38 +2802,53 @@ ${relevantKnowledge}`,
               <div className="w-10 md:w-20" />
             </div>
 
-            {/* 阶段标签页 */}
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
-              {demoStages.map((stage) => (
-                <button
-                  key={stage.stage}
-                  onClick={() => setTopicStage(stage.stage)}
-                  className={cn(
-                    "px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all",
-                    topicStage === stage.stage
-                      ? "bg-black text-white"
-                      : "bg-gray-50 text-gray-400 hover:text-black"
-                  )}
-                >
-                  阶段{['一', '二', '三', '四'][stage.stage - 1]}
-                </button>
-              ))}
-            </div>
+            {/* 阶段标签页 + 阶段简介整合 - 文件夹样式 */}
+            <div className="mb-6">
+              {/* 阶段标签页 - 像文件夹标签 */}
+              <div className="flex items-end gap-1">
+                {demoStages.map((stage) => (
+                  <button
+                    key={stage.stage}
+                    onClick={() => setTopicStage(stage.stage)}
+                    className={cn(
+                      "px-4 py-2.5 rounded-t-lg text-xs font-bold whitespace-nowrap transition-all border-b-2",
+                      topicStage === stage.stage
+                        ? "bg-white text-black border-black -mb-px z-10 shadow-sm"
+                        : "bg-gray-100 text-gray-400 border-transparent hover:text-black hover:bg-gray-50"
+                    )}
+                  >
+                    阶段{['一', '二', '三', '四'][stage.stage - 1]}
+                  </button>
+                ))}
+              </div>
 
-            {/* 阶段摘要卡 */}
-            <div className="bg-gray-50 rounded-2xl p-6 mb-6">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">
-                阶段{['一', '二', '三', '四'][currentStageData.stage - 1]}｜{currentStageData.name}
-              </h3>
-              <p className="text-xs text-gray-500 mb-4">{currentStageData.goal}</p>
-              <div className="flex items-center gap-4 text-[10px] text-gray-400">
-                <span>选题数量：{currentStageData.topics.length} 条</span>
-                <span>P0 选题：{currentStageData.topics.filter(t => t.priority === 'P0').length} 条</span>
+              {/* 阶段简介 - 像翻页内容 */}
+              <div className="bg-white border border-gray-200 rounded-b-lg rounded-tr-lg p-5 space-y-3 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-gray-900 mb-2">
+                      阶段{['一', '二', '三', '四'][currentStageData.stage - 1]}｜{currentStageData.name}
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-3">{currentStageData.goal}</p>
+                    <div className="space-y-1.5 text-xs text-gray-600">
+                      <p><span className="font-bold">核心任务：</span>{currentStageData.coreTask}</p>
+                      <p><span className="font-bold">推荐平台：</span>{currentStageData.platform}</p>
+                      <p><span className="font-bold">推荐风格：</span>{currentStageData.style}</p>
+                      <p><span className="font-bold">方向判断：</span>{currentStageData.direction}</p>
+                      <p><span className="font-bold">不建议：</span>{currentStageData.notRecommended}</p>
+                      <p><span className="font-bold">下一步：</span>{currentStageData.nextAction}</p>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-gray-400 ml-4">
+                    <p>{currentStageData.topics.length} 条选题</p>
+                    <p>{currentStageData.topics.filter(t => t.priority === 'P0').length} 条 P0</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* 选题列表 */}
-            <div className="flex-1 overflow-y-auto space-y-4">
+            {/* 选题列表 - 压缩高度 */}
+            <div className="flex-1 overflow-y-auto space-y-2">
               {currentStageData.topics.map((topic) => (
                 <div
                   key={topic.id}
@@ -2866,14 +2857,14 @@ ${relevantKnowledge}`,
                     setState(prev => ({ ...prev, selectedTopic: topic, copywritingTopic: topic.title }));
                     setCurrentStep('copywriting');
                   }}
-                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                  className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-3">
+                  <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-mono text-gray-400">{topic.id}</span>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-xs font-mono text-gray-400">{topic.id}</span>
                         <span className={cn(
-                          "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                          "px-2 py-0.5 rounded-full text-[11px] font-bold",
                           topic.priority === 'P0' ? "bg-red-100 text-red-600" :
                           topic.priority === 'P1' ? "bg-amber-100 text-amber-600" :
                           "bg-gray-100 text-gray-600"
@@ -2881,7 +2872,7 @@ ${relevantKnowledge}`,
                           {topic.priority}
                         </span>
                         <span className={cn(
-                          "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                          "px-2 py-0.5 rounded-full text-[11px] font-bold",
                           topic.status === 'approved' ? "bg-green-100 text-green-600" :
                           topic.status === 'planned' ? "bg-blue-100 text-blue-600" :
                           "bg-gray-100 text-gray-600"
@@ -2890,29 +2881,21 @@ ${relevantKnowledge}`,
                         </span>
                       </div>
                       <h4 className="text-sm font-bold text-gray-900 mb-2">{topic.title}</h4>
-                      <p className="text-xs text-gray-500 mb-3">{topic.description}</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold">爆款：</span>
+                          <span>{topic.hookType}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold">钩子：</span>
+                          <span className="line-clamp-1">{topic.hook3s}</span>
+                        </span>
+                        <span className="text-gray-400">|</span>
+                        <span>{topic.platform}</span>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-gray-600">
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-400 font-bold whitespace-nowrap">爆款类型：</span>
-                      <span>{topic.hookType}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-400 font-bold whitespace-nowrap">3秒钩子：</span>
-                      <span className="font-medium">{topic.hook3s}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-400 font-bold whitespace-nowrap">平台：</span>
-                      <span>{topic.platform}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-400">来源：{topic.source}</span>
-                    <button className="px-4 py-2 bg-black text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-all">
-                      进入文案生成
+                    <button className="px-3 py-1.5 bg-black text-white rounded-lg text-[11px] font-bold hover:bg-gray-800 transition-all whitespace-nowrap">
+                      生成文案
                     </button>
                   </div>
                 </div>
@@ -2920,17 +2903,17 @@ ${relevantKnowledge}`,
             </div>
 
             {/* 操作按钮 */}
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-4 flex items-center gap-3">
               <button
                 onClick={() => alert('Demo 模式：选题池已预置')}
-                className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-all shadow-md text-sm"
+                className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all text-xs"
               >
-                <Sparkles size={16} className="inline mr-2" />
+                <Sparkles size={14} className="inline mr-1" />
                 生成选题池（Demo）
               </button>
               <button
                 onClick={() => setCurrentStep('copywriting')}
-                className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all text-sm"
+                className="px-4 py-2.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all text-xs"
               >
                 进入文案
               </button>
@@ -3831,6 +3814,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           {[
             { id: 'interview', label: '访谈', icon: User },
             { id: 'positioning', label: '定位', icon: Target },
+            { id: 'topic', label: '选题', icon: FileText },
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
