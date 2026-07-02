@@ -160,12 +160,103 @@ className="px-4 py-2.5 bg-black text-white rounded-xl font-bold hover:bg-gray-80
 1. **阶段切换**：点击标签页切换阶段，显示对应阶段的简介和选题列表
 2. **选题卡片点击**：可扩展显示完整选题信息（待实现）
 3. **生成文案按钮**：点击后进入文案页面，携带选题 ID（待实现）
-4. **生成选题池**：触发 AI 生成选题（Demo 模式显示 alert）
+4. **生成选题池**：调用 AI 生成选题（`TOPIC_SYSTEM_PROMPT`），解析失败时降级到 Demo 数据
 5. **进入文案**：直接跳转到文案页面
 
 ---
 
-## 8. 响应式设计
+## 8. AI 生成与解析
+
+### Prompt 架构
+
+| Prompt | 用途 | 位置 |
+|--------|------|------|
+| `TOPIC_SYSTEM_PROMPT` | 选题生成（系统提示词） | `src/lib/prompts.ts` |
+
+### Prompt 输入格式
+
+User Message 包含：
+```
+【访谈报告】：
+${interviewReport || "（暂无）"}
+
+【定位报告】：
+${positioningReport || "（暂无）"}
+
+【参考语料】：
+${knowledgeContext}
+```
+
+### AI 输出格式（强制纯 JSON）
+
+```json
+{
+  "stages": [
+    {
+      "stage": 1,
+      "name": "阶段名称",
+      "goal": "阶段目标",
+      "coreTask": "核心任务",
+      "platform": "推荐平台",
+      "style": "推荐风格",
+      "direction": "方向判断",
+      "notRecommended": "不建议方向",
+      "nextAction": "下一步行动",
+      "topics": [
+        {
+          "id": "WZ-S1-001",
+          "title": "选题标题",
+          "hookType": "爆款类型",
+          "hook3s": "3秒钩子",
+          "platform": "适合平台",
+          "priority": "P0",
+          "status": "approved"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 字段名规范（驼峰命名）
+
+| 前端字段 | Prompt 字段 | 说明 |
+|---------|------------|------|
+| `name` | `name` | 阶段名称 |
+| `goal` | `goal` | 阶段目标 |
+| `hook3s` | `hook3s` | 3秒钩子 |
+| `hookType` | `hookType` | 爆款类型 |
+| `notRecommended` | `notRecommended` | 不建议方向 |
+
+### 解析策略（4 层 fallback）
+
+1. **直接解析**：`JSON.parse(aiResponse)`
+2. **提取 Markdown 代码块**：正则匹配 \`\`\`json ... \`\`\`
+3. **正则提取**：提取第一个 `{` 到最后一个 `}` 之间的内容
+4. **降级**：解析失败时使用 Demo 数据
+
+### 状态管理
+
+| 状态 | 说明 |
+|------|------|
+| `idle` | 初始状态，未生成 |
+| `generating` | AI 生成中 |
+| `completed` | AI 生成成功 |
+| `demo_fallback` | AI 生成失败，使用 Demo 数据 |
+
+---
+
+## 9. 技术实现
+
+- **组件位置**：`src/App.tsx` case 'topic'
+- **状态管理**：`topicPool`（选题池数据）、`topicStage`（当前选中的阶段）、`topicGenerationStatus`（生成状态）
+- **数据来源**：AI 生成（`generateTopicPool`）或 Demo 数据（`getDemoTopicPool`）
+- **导航解锁**：完成访谈后解锁（`!!interviewReport`）
+- **Prompt 文件**：`src/lib/prompts.ts` - `TOPIC_SYSTEM_PROMPT`
+
+---
+
+*最后更新：2026-06-28*
 
 - 标签页：移动端使用 `text-xs`，桌面端使用 `text-sm`
 - 选题卡片：移动端单列，桌面端 2-3 列网格

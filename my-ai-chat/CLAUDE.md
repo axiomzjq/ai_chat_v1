@@ -265,6 +265,21 @@ cd /home/admin/work/ai_chat_v1/my-ai-chat
 - 步骤导航已简化（删除了顶部圆形按钮）
 - 选题页面位于定位与文案之间，展示 4 个阶段的选题规划池
 - 选题页面 UI：文件夹样式标签页 + 阶段简介面板 + 压缩选题卡片
+- 文案页面拆分为两个 Prompt：对话模式（思路整理）+ 生成模式（脚本生成）
+
+### 提示词架构
+
+| 页面 | Prompt | 用途 |
+|------|--------|------|
+| 访谈 | `INTERVIEW_SYSTEM_PROMPT` | 深度访谈对话 |
+| 定位 | `POSITIONING_SYSTEM_PROMPT` | IP 定位分析 |
+| 选题 | `TOPIC_SYSTEM_PROMPT` | 阶段选题生成（JSON 输出） |
+| 文案-对话 | `COPYWRITING_SYSTEM_PROMPT` | 思路整理对话 |
+| 文案-生成 | `COPYWRITING_GENERATE_SYSTEM_PROMPT` | 脚本生成（JSON 输出） |
+| 信息 | `INFO_SYSTEM_PROMPT` | 企业/行业分析 |
+
+**Prompt 文件：** `src/lib/prompts.ts`
+**文档：** `knowledge-base/提示词架构说明.md`
 
 ### 认证系统
 
