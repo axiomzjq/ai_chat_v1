@@ -269,17 +269,42 @@ cd /home/admin/work/ai_chat_v1/my-ai-chat
 
 ### 提示词架构
 
-| 页面 | Prompt | 用途 |
-|------|--------|------|
-| 访谈 | `INTERVIEW_SYSTEM_PROMPT` | 深度访谈对话 |
-| 定位 | `POSITIONING_SYSTEM_PROMPT` | IP 定位分析 |
-| 选题 | `TOPIC_SYSTEM_PROMPT` | 阶段选题生成（JSON 输出） |
-| 文案-对话 | `COPYWRITING_SYSTEM_PROMPT` | 思路整理对话 |
-| 文案-生成 | `COPYWRITING_GENERATE_SYSTEM_PROMPT` | 脚本生成（JSON 输出） |
-| 信息 | `INFO_SYSTEM_PROMPT` | 企业/行业分析 |
+每个步骤有一个"基础提示词"（`src/lib/prompts.ts`）+ 若干"参考文件"（`refs/` 目录下的 `.txt`）。
+基础提示词定义角色和职责，参考文件提供详细方法论。
+App.tsx 负责加载参考文件内容，注入到 AI 请求的 system prompt 或 user message 中。
+
+| 页面 | 基础 Prompt | 参考文件 | 前置输入 | 输出结果 |
+|------|------------|---------|---------|---------|
+| 访谈 | `INTERVIEW_SYSTEM_PROMPT` | `refs/interview/客户访谈参考手册.txt` | 无 | 访谈结果 |
+| 定位 | `POSITIONING_SYSTEM_PROMPT` | `refs/positioning/客户定位访谈参考手册.txt`<br>`refs/positioning/写作技巧提示词_精华版.txt` | 访谈结果 | 定位报告 |
+| 选题 | `TOPIC_SYSTEM_PROMPT` | `refs/topic/选题提示词_基于访谈结果.txt`<br>`refs/topic/写作技巧提示词_精华版.txt` | 访谈结果 + 定位报告 | 选题池（JSON） |
+| 文案-对话 | `COPYWRITING_SYSTEM_PROMPT` | `refs/copywriting/客户采访与选题提示词.txt` | 访谈结果 + 定位报告 + 选题池 | 对话 |
+| 文案-生成 | `COPYWRITING_GENERATE_SYSTEM_PROMPT` | `refs/copywriting/客户采访与选题提示词.txt`<br>`refs/copywriting/文案审核提示词.txt` | 访谈结果 + 定位报告 + 对话上下文 | 文案（JSON） |
+| 信息 | `INFO_SYSTEM_PROMPT` | 无（嵌入访谈流程） | 访谈报告 | 企业/行业分析 |
 
 **Prompt 文件：** `src/lib/prompts.ts`
-**文档：** `knowledge-base/提示词架构说明.md`
+**参考文件：** `refs/` 目录（按步骤分文件夹）
+**文档：** `knowledge-base/提示词文件架构.md`
+
+### 参考文件目录结构
+
+```
+refs/
+├── interview/客户访谈参考手册.txt
+├── positioning/
+│   ├── 客户定位访谈参考手册.txt
+│   └── 写作技巧提示词_精华版.txt
+├── topic/
+│   ├── 选题提示词_基于访谈结果.txt
+│   └── 写作技巧提示词_精华版.txt
+├── copywriting/
+│   ├── 客户采访与选题提示词.txt
+│   └── 文案审核提示词.txt
+└── results/                          ← 各步骤输出结果存放目录
+    ├── 访谈结果/
+    ├── 定位报告/
+    └── 选题池/
+```
 
 ### 认证系统
 
