@@ -1635,6 +1635,7 @@ export default function App() {
       infoReport,
       positioningReport,
       topicPool,
+      topicGenerationStatus: topicPool.length > 0 ? 'completed' : 'idle',
     }));
   };
 
@@ -2822,126 +2823,56 @@ ${relevantKnowledge}`,
           </div>
         );
       case 'topic': {
-        // 选题阶段 - Demo 页面
-        const demoStages = [
-          {
-            stage: 1,
-            name: '0-30天：建立可信主线',
-            goal: '让用户先记住“万智是谁、在做什么、为什么值得持续关注”。主打真实过程、人设反差、核心观点和两个项目的从0到1。',
-            coreTask: '破圈认知 + 人设建立 + 项目主线解释',
-            platform: '抖音/视频号为主，小红书同步图文笔记',
-            style: '真实过程分享、轻反差、少卖货、多建立持续关注理由',
-            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
-            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
-            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
-            topics: [
-              {
-                id: 'WZ-S1-001',
-                title: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
-                hookType: '反差判断型',
-                hook3s: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
-                platform: '抖音 + 视频号 + 小红书',
-                priority: 'P0',
-                status: 'approved'
-              },
-              {
-                id: 'WZ-S1-002',
-                title: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
-                hookType: '反差判断型',
-                hook3s: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
-                platform: '抖音 + 小红书 + 视频号',
-                priority: 'P0',
-                status: 'approved'
-              },
-              {
-                id: 'WZ-S1-003',
-                title: 'AI茶馆这个想法，一开始其实只是普通茶馆',
-                hookType: '观点金句型',
-                hook3s: 'AI茶馆这个想法，一开始其实只是普通茶馆',
-                platform: '抖音 + 小红书 + 视频号',
-                priority: 'P0',
-                status: 'planned'
-              }
-            ]
-          },
-          {
-            stage: 2,
-            name: '31-60天：建立专业信任',
-            goal: '从过程记录进入方法论沉淀，证明你懂业务、懂内容、懂AI落地。重点区分高传播切口与高转化切口。',
-            coreTask: '方法论输出 + 客户教育 + 专业信任',
-            platform: '视频号/公众号承接深度，小红书/抖音做切口传播',
-            style: '判断清晰、案例带路、客户教育，不装专家',
-            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
-            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
-            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
-            topics: [
-              {
-                id: 'WZ-S2-001',
-                title: '我做创始人IP系统后发现，老板最缺的不是文案',
-                hookType: '反差判断型',
-                hook3s: '我做创始人IP系统后发现，老板最缺的不是文案',
-                platform: '视频号 + 公众号 + 抖音',
-                priority: 'P0',
-                status: 'approved'
-              },
-              {
-                id: 'WZ-S2-002',
-                title: '两个团队解散后，我才知道什么人适合一起创业',
-                hookType: '踩坑复盘型',
-                hook3s: '两个团队解散后，我才知道什么人适合一起创业',
-                platform: '抖音 + 视频号',
-                priority: 'P0',
-                status: 'planned'
-              }
-            ]
-          },
-          {
-            stage: 3,
-            name: '61-90天：公开验证与轻转化',
-            goal: '用内测反馈、用户体验、会员样本、项目进展和真实案例证明两个项目有效，开始引导咨询、会员、合作。',
-            coreTask: '案例验证 + 反馈证明 + 会员转化',
-            platform: '视频号/抖音发布证据型短视频，公众号沉淀复盘，小红书做体验反馈',
-            style: '真实反馈、前后变化、轻转化、避免夸大承诺',
-            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
-            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
-            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
-            topics: [
-              {
-                id: 'WZ-S3-001',
-                title: '兰亭茶境内测30天，我们收到了127条真实反馈',
-                hookType: '案例结果型',
-                hook3s: '兰亭茶境内测30天，我们收到了127条真实反馈',
-                platform: '视频号 + 抖音',
-                priority: 'P0',
-                status: 'approved'
-              }
-            ]
-          },
-          {
-            stage: 4,
-            name: '90天后：沉淀案例与扩展B端合作',
-            goal: '沉淀行业案例、对外空间方案、政府/园区合作、渠道伙伴和项目共创能力，形成更高客单的ToB合作入口。',
-            coreTask: '行业案例 + B端合作 + 项目共创 + 渠道招募',
-            platform: '视频号/公众号为主，配合线下活动、私域资料包、项目路演内容',
-            style: '案例沉淀、合作说明、资源筛选、稳健转化',
-            direction: '本阶段所有内容都要回到“真实项目推进 + AI商业落地 + ToB信任建立”。',
-            notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
-            nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
-            topics: [
-              {
-                id: 'WZ-S4-001',
-                title: '我们从AI茶空间项目中总结了3个ToB合作模式',
-                hookType: '机制证明型',
-                hook3s: '我们从AI茶空间项目中总结了3个ToB合作模式',
-                platform: '视频号 + 公众号',
-                priority: 'P0',
-                status: 'approved'
-              }
-            ]
-          }
-        ];
+        // 选题阶段
+        const hasTopicPool = state.topicPool.length > 0;
+        const isEmpty = !hasTopicPool && state.topicGenerationStatus === 'idle';
+        const isLoading = state.topicGenerationStatus === 'generating';
+        const isDemoFallback = state.topicGenerationStatus === 'demo_fallback';
 
-        const currentStageData = demoStages.find(s => s.stage === topicStage) || demoStages[0];
+        // 选题池为空且未生成过：显示空状态
+        if (isEmpty) {
+          return (
+            <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
+              <div className="max-w-md w-full text-center space-y-6">
+                <div className="w-20 h-20 mx-auto bg-gray-50 rounded-full flex items-center justify-center">
+                  <FileText size={32} className="text-gray-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-bold text-black mb-2">尚未生成选题池</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    选题池基于您的访谈结果和定位报告生成，包含 4 个阶段的详细选题规划。
+                    <br/>请先完成访谈和定位，然后点击下方按钮生成选题。
+                  </p>
+                </div>
+                <button
+                  onClick={generateTopicPool}
+                  disabled={isLoading}
+                  className="w-full py-4 bg-black text-white rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  {isLoading ? '生成中...' : '生成选题池'}
+                </button>
+                <p className="text-[10px] text-gray-400">
+                  需要先完成访谈并生成定位报告
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        // 生成中：显示加载状态
+        if (isLoading) {
+          return (
+            <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
+              <Loader2 size={40} className="animate-spin text-black mb-4" />
+              <p className="text-sm text-gray-500">AI 正在为您生成选题规划池...</p>
+            </div>
+          );
+        }
+
+        // 有数据：使用真实数据
+        const displayStages = hasTopicPool ? state.topicPool : getDemoTopicPool();
+        const currentStageData = displayStages.find((s: any) => s.stage === topicStage) || displayStages[0];
 
         return (
           <div className="flex-1 flex flex-col p-4 md:p-8">
@@ -2962,7 +2893,7 @@ ${relevantKnowledge}`,
             <div className="mb-6">
               {/* 阶段标签页 - 像文件夹标签 */}
               <div className="flex items-end gap-1">
-                {demoStages.map((stage) => (
+                {displayStages.map((stage: any) => (
                   <button
                     key={stage.stage}
                     onClick={() => setTopicStage(stage.stage)}
@@ -3626,6 +3557,19 @@ ${positioningRefContent}` : '')
         system: systemPrompt,
         prompt: `基于以下信息生成3个不同维度的定位方案。
 
+【输出格式要求】：
+请严格按以下格式输出，不要合并为一个方案：
+### 定位方案 1：[方案名称]
+[完整方案内容，包含定位分析、内容方向、平台建议等]
+
+### 定位方案 2：[方案名称]
+[完整方案内容]
+
+### 定位方案 3：[方案名称]
+[完整方案内容]
+
+三个方案必须在人物主线角度、首批受众切入、表达风格、栏目侧重、平台侧重上形成真实差异。
+
 【特别说明】：如果以下报告内容为空或信息不足，请根据您的专业知识提供通用的、具有启发性的 ToB 创始人 IP 定位模板，并引导用户在后续对话中补充具体信息。
 
 【个人IP分析报告】：
@@ -3649,7 +3593,7 @@ ${knowledgeContext}` : ""}`,
         return;
       }
 
-      const options = (text || '').split(/(?=###\s+定位分析|###\s+定位方案)/).filter(o => o.trim().length > 50);
+      const options = (text || '').split(/(?=###\s+定位方案\s*\d)/).filter(o => o.trim().length > 50);
 
       setState(prev => ({
         ...prev,
