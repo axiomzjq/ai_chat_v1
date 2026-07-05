@@ -138,10 +138,11 @@ export function downloadTextFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/** 保存结果到 localStorage */
-export function saveResultToStorage(key: string, data: any) {
+/** 保存结果到 localStorage（按用户隔离） */
+export function saveResultToStorage(key: string, data: any, userId?: string) {
   try {
-    localStorage.setItem(`result_${key}`, JSON.stringify({
+    const scopedKey = userId ? `result_${key}_${userId}` : `result_${key}`;
+    localStorage.setItem(scopedKey, JSON.stringify({
       data,
       savedAt: new Date().toISOString(),
     }));
@@ -150,16 +151,22 @@ export function saveResultToStorage(key: string, data: any) {
   }
 }
 
-/** 从 localStorage 读取结果 */
-export function loadResultFromStorage(key: string): any | null {
+/** 从 localStorage 读取结果（按用户隔离） */
+export function loadResultFromStorage(key: string, userId?: string): any | null {
   try {
-    const saved = localStorage.getItem(`result_${key}`);
+    const scopedKey = userId ? `result_${key}_${userId}` : `result_${key}`;
+    const saved = localStorage.getItem(scopedKey);
     if (!saved) return null;
     const parsed = JSON.parse(saved);
     return parsed.data;
   } catch {
     return null;
   }
+}
+
+/** 获取用户隔离的 localStorage key */
+export function getUserScopedKey(baseKey: string, userId: string): string {
+  return `${baseKey}_${userId}`;
 }
 
 // --- Types ---
@@ -461,9 +468,10 @@ const CollapsibleMarkdown = ({ content }: { content: string }) => {
 
 const UI_STATE_KEY = 'ai_chat_ui_state';
 
-function loadUIState(): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
+function loadUIState(userId?: string): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
+  const key = userId ? getUserScopedKey(UI_STATE_KEY, userId) : UI_STATE_KEY;
   try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(UI_STATE_KEY) : null;
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
     if (raw) {
       const parsed = JSON.parse(raw);
       // 兼容旧版已移除的 information 步骤
@@ -1607,21 +1615,50 @@ export default function App() {
     };
   });
 
-  useEffect(() => {
-    localStorage.setItem('founder_ip_history', JSON.stringify(state.history));
-  }, [state.history]);
+  // 加载用户隔离的本地数据
+  const loadUserLocalData = (userId: string) => {
+    // 对话历史
+    const history = loadResultFromStorage('founder_ip_history', userId) || [];
+    // 访谈结果
+    const interviewReport = loadResultFromStorage('interview_report', userId) || '';
+    // 企业信息报告
+    const infoReport = loadResultFromStorage('info_report', userId) || '';
+    // 定位报告
+    const positioningReport = loadResultFromStorage('positioning_report', userId) || '';
+    // 选题池
+    const topicPool = loadResultFromStorage('topic_pool', userId) || [];
 
-  // UI 状态持久化：刷新后记住页面位置
+    setState(prev => ({
+      ...prev,
+      history,
+      interviewReport,
+      infoReport,
+      positioningReport,
+      topicPool,
+    }));
+  };
+
+  // 保存对话历史（按用户隔离）
   useEffect(() => {
-    const raw = localStorage.getItem(UI_STATE_KEY);
+    const userId = state.user?.uid;
+    if (!userId) return;
+    const key = getUserScopedKey('founder_ip_history', userId);
+    localStorage.setItem(key, JSON.stringify(state.history));
+  }, [state.history, state.user?.uid]);
+
+  // UI 状态持久化（按用户隔离）
+  useEffect(() => {
+    const userId = state.user?.uid;
+    const key = userId ? getUserScopedKey(UI_STATE_KEY, userId) : UI_STATE_KEY;
+    const raw = localStorage.getItem(key);
     const saved = raw ? JSON.parse(raw) : {};
-    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+    localStorage.setItem(key, JSON.stringify({
       ...saved,
       currentStep,
       isStarted,
       lastView: state.view === 'login' ? saved.lastView : state.view,
     }));
-  }, [currentStep, isStarted, state.view]);
+  }, [currentStep, isStarted, state.view, state.user?.uid]);
 
   // Auth State
   useEffect(() => {
@@ -1655,6 +1692,8 @@ export default function App() {
                 user: profile,
                 view: targetView,
               }));
+              // 加载该用户的本地数据（替换之前的共享数据）
+              loadUserLocalData(profile.uid);
             }
           }
         } catch (err) {
@@ -1713,17 +1752,22 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      const currentUserId = state.user?.uid;
       await signOut(auth);
-      // 登出时清除认证缓存和页面位置
+      // 登出时清除认证缓存和该用户的本地数据
       localStorage.removeItem('authing_access_token');
       localStorage.removeItem('firebase_user_cache');
-      const raw = localStorage.getItem(UI_STATE_KEY);
-      if (raw) {
-        try {
-          const saved = JSON.parse(raw);
-          saved.lastView = null;
-          localStorage.setItem(UI_STATE_KEY, JSON.stringify(saved));
-        } catch { /* ignore */ }
+      // 清除该用户的 localStorage 数据
+      if (currentUserId) {
+        const keysToRemove = [
+          getUserScopedKey('founder_ip_history', currentUserId),
+          getUserScopedKey(UI_STATE_KEY, currentUserId),
+          getUserScopedKey('result_interview_report', currentUserId),
+          getUserScopedKey('result_info_report', currentUserId),
+          getUserScopedKey('result_positioning_report', currentUserId),
+          getUserScopedKey('result_topic_pool', currentUserId),
+        ];
+        keysToRemove.forEach(key => localStorage.removeItem(key));
       }
       setState(initialState);
       setCurrentStep('interview');
@@ -2160,7 +2204,7 @@ ${relevantKnowledge}`,
 
       // 标记完成
       setState(prev => ({ ...prev, interviewReport: fullReport + '\n\n<!-- REPORT_COMPLETE -->' }));
-      saveResultToStorage('interview_report', fullReport);
+      saveResultToStorage('interview_report', fullReport, state.user?.uid);
       setReportProgress('');
     } catch (error: any) {
       console.error("Detailed report error:", error);
@@ -3531,7 +3575,7 @@ ${knowledgeContext}` : ""}`,
         onUsage: reportTokenUsage,
       });
       setState(prev => ({ ...prev, infoReport: text || '' }));
-      if (text) saveResultToStorage('info_report', text);
+      if (text) saveResultToStorage('info_report', text, state.user?.uid);
     } catch (error) {
       console.error("Info generation error:", error);
     } finally {
@@ -3614,7 +3658,7 @@ ${knowledgeContext}` : ""}`,
         positioningReport: options[0] || text
       }));
       const report = options[0] || text;
-      if (report) saveResultToStorage('positioning_report', report);
+      if (report) saveResultToStorage('positioning_report', report, state.user?.uid);
     } catch (error: any) {
       console.error("Positioning generation error:", error);
       alert('定位方案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
@@ -4053,7 +4097,7 @@ ${topicRefContent}` : '');
           topicPool: parsed.stages,
           topicGenerationStatus: 'completed',
         }));
-        saveResultToStorage('topic_pool', parsed.stages);
+        saveResultToStorage('topic_pool', parsed.stages, state.user?.uid);
       } else {
         console.warn('选题 JSON 解析失败，使用 Demo 数据');
         const demoData = getDemoTopicPool();
@@ -4062,7 +4106,7 @@ ${topicRefContent}` : '');
           topicPool: demoData,
           topicGenerationStatus: 'demo_fallback',
         }));
-        saveResultToStorage('topic_pool', demoData);
+        saveResultToStorage('topic_pool', demoData, state.user?.uid);
       }
     } catch (error) {
       console.error('选题生成失败:', error);
