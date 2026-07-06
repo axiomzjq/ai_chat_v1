@@ -4043,14 +4043,14 @@ ${topicRefContent}` : '');
         }));
         saveResultToStorage('topic_pool', parsed.stages, state.user?.uid);
       } else {
-        console.warn('选题 JSON 解析失败，使用 Demo 数据');
+        console.warn('选题 JSON 解析失败，使用 Demo 数据（仅当前会话有效）');
         const demoData = getDemoTopicPool();
         setState(prev => ({
           ...prev,
           topicPool: demoData,
           topicGenerationStatus: 'demo_fallback',
         }));
-        saveResultToStorage('topic_pool', demoData, state.user?.uid);
+        // Demo 降级数据不保存到 localStorage，刷新后显示空状态
       }
     } catch (error) {
       console.error('选题生成失败:', error);
@@ -4059,6 +4059,7 @@ ${topicRefContent}` : '');
         topicPool: getDemoTopicPool(),
         topicGenerationStatus: 'demo_fallback',
       }));
+      // Demo 降级数据不保存到 localStorage，刷新后显示空状态
     } finally {
       setIsGeneratingTopics(false);
     }
