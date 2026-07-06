@@ -29,7 +29,7 @@ router.get('/', async (req, res, next) => {
 // PUT /api/user/profile - 更新用户画像（JSONB 合并）
 router.put('/', async (req, res, next) => {
   try {
-    const { current_step, interview_data, information_report, positioning_report, copywriting_data } = req.body;
+    const { current_step, interview_data, information_report, positioning_report, positioning_options, topic_pool, copywriting_data } = req.body;
     const updates = [];
     const values = [];
     let idx = 1;
@@ -38,6 +38,8 @@ router.put('/', async (req, res, next) => {
     if (interview_data !== undefined) { updates.push(`interview_data = $${idx++}`); values.push(JSON.stringify(interview_data)); }
     if (information_report !== undefined) { updates.push(`information_report = $${idx++}`); values.push(JSON.stringify(information_report)); }
     if (positioning_report !== undefined) { updates.push(`positioning_report = $${idx++}`); values.push(JSON.stringify(positioning_report)); }
+    if (positioning_options !== undefined) { updates.push(`positioning_options = $${idx++}`); values.push(JSON.stringify(positioning_options)); }
+    if (topic_pool !== undefined) { updates.push(`topic_pool = $${idx++}`); values.push(JSON.stringify(topic_pool)); }
     if (copywriting_data !== undefined) { updates.push(`copywriting_data = $${idx++}`); values.push(JSON.stringify(copywriting_data)); }
 
     if (updates.length === 0) {
@@ -53,13 +55,15 @@ router.put('/', async (req, res, next) => {
     if (result.rows.length === 0) {
       // 不存在则创建
       const createResult = await db.query(
-        `INSERT INTO user_profiles (user_id, current_step, interview_data, information_report, positioning_report, copywriting_data)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO user_profiles (user_id, current_step, interview_data, information_report, positioning_report, positioning_options, topic_pool, copywriting_data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [req.user.id, current_step || 'interview', 
-         JSON.stringify(interview_data || {}), 
-         JSON.stringify(information_report || {}), 
-         JSON.stringify(positioning_report || {}), 
+        [req.user.id, current_step || 'interview',
+         JSON.stringify(interview_data || {}),
+         JSON.stringify(information_report || {}),
+         JSON.stringify(positioning_report || {}),
+         JSON.stringify(positioning_options || []),
+         JSON.stringify(topic_pool || []),
          JSON.stringify(copywriting_data || {})]
       );
       return res.json({ code: 0, message: 'success', data: createResult.rows[0] });

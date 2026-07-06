@@ -2113,6 +2113,8 @@ export default function App() {
               interviewReport: data.interview_data?.report || prev.interviewReport,
               infoReport: typeof data.information_report === 'string' ? data.information_report : prev.infoReport,
               positioningReport: typeof data.positioning_report === 'string' ? data.positioning_report : '',
+              positioningOptions: Array.isArray(data.positioning_options) ? data.positioning_options : prev.positioningOptions,
+              topicPool: Array.isArray(data.topic_pool) ? data.topic_pool : prev.topicPool,
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
               copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
@@ -2137,6 +2139,8 @@ export default function App() {
             },
             information_report: state.infoReport,
             positioning_report: state.positioningReport,
+            positioning_options: state.positioningOptions,
+            topic_pool: state.topicPool,
             copywriting_data: {
               output: state.copywritingOutput,
               messages: state.copywritingMessages,
@@ -2157,6 +2161,8 @@ export default function App() {
     state.interviewReport,
     state.infoReport,
     state.positioningReport,
+    state.positioningOptions,
+    state.topicPool,
     state.copywritingOutput,
     state.copywritingMessages,
     state.uploadedMaterials
@@ -2705,27 +2711,28 @@ ${relevantKnowledge}`,
                   {/* Tab Navigation - Three Windows Switcher */}
                   <div className="flex items-center gap-3 p-2 bg-gray-100/50 rounded-[24px] w-fit mx-auto border border-gray-200/50 backdrop-blur-sm">
                     {state.positioningOptions.map((opt, idx) => {
-                      // Try to find the title for this option from the header or the "方案名称" field
-                      const headerMatch = opt.match(/###\s+(定位分析|定位方案\s+(\d+)[:：]\s*(.*))/);
-                      let title = "";
-                      
-                      const numMap: Record<string, string> = {
-                        '1': '一',
-                        '2': '二',
-                        '3': '三'
-                      };
+                      // 第一个标签固定显示"总结"，其余从内容中提取标题
+                      let title = idx === 0 ? '总结' : '';
 
-                      if (headerMatch) {
-                        if (headerMatch[1] === "定位分析") {
-                          title = "定位分析";
+                      if (idx > 0) {
+                        const headerMatch = opt.match(/###\s+(定位分析|定位方案\s+(\d+)[:：]\s*(.*))/);
+                        const numMap: Record<string, string> = {
+                          '1': '一',
+                          '2': '二',
+                          '3': '三'
+                        };
+
+                        if (headerMatch) {
+                          if (headerMatch[1] === "定位分析") {
+                            title = "定位分析";
+                          } else {
+                            const optionIndex = headerMatch[2] || "";
+                            title = `方案${numMap[optionIndex] || optionIndex}`;
+                          }
                         } else {
-                          // It's a "定位方案 X: [方案名称]"
-                          const optionIndex = headerMatch[2] || "";
-                          title = `方案${numMap[optionIndex] || optionIndex}`;
+                          const fieldMatch = opt.match(/方案名称[：:](.*)/);
+                          title = (fieldMatch ? fieldMatch[1].trim() : `方案 ${idx}`).split('\n')[0];
                         }
-                      } else {
-                        const fieldMatch = opt.match(/方案名称[：:](.*)/);
-                        title = (fieldMatch ? fieldMatch[1].trim() : `方案 ${idx}`).split('\n')[0];
                       }
                       
                       return (
