@@ -1625,6 +1625,9 @@ export default function App() {
     const infoReport = loadResultFromStorage('info_report', userId) || '';
     // 定位报告
     const positioningReport = loadResultFromStorage('positioning_report', userId) || '';
+    // 定位方案选项（多版）
+    const positioningOptions = loadResultFromStorage('positioning_options', userId) || [];
+    const selectedPositioningIndex = positioningOptions.length > 0 ? 0 : null;
     // 选题池
     const topicPool = loadResultFromStorage('topic_pool', userId) || [];
 
@@ -1634,6 +1637,8 @@ export default function App() {
       interviewReport,
       infoReport,
       positioningReport,
+      positioningOptions,
+      selectedPositioningIndex,
       topicPool,
       topicGenerationStatus: topicPool.length > 0 ? 'completed' : 'idle',
     }));
@@ -3633,6 +3638,9 @@ ${knowledgeContext}` : ""}`,
       }));
       const report = options[0] || text;
       if (report) saveResultToStorage('positioning_report', report, state.user?.uid);
+      // 同时保存 options 数组，防止切换页面后丢失
+      const optionsToSave = options.length > 0 ? options : [text];
+      saveResultToStorage('positioning_options', optionsToSave, state.user?.uid);
     } catch (error: any) {
       console.error("Positioning generation error:", error);
       alert('定位方案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
@@ -3657,8 +3665,21 @@ ${positioningFeedback}
 请根据建议优化该方案，保持专业度。`,
         onUsage: reportTokenUsage,
       });
-      setState(prev => ({ ...prev, positioningReport: newReport }));
+      setState(prev => {
+        const idx = prev.selectedPositioningIndex ?? 0;
+        const updatedOptions = [...prev.positioningOptions];
+        if (updatedOptions.length > 0 && idx < updatedOptions.length) {
+          updatedOptions[idx] = newReport;
+        }
+        return {
+          ...prev,
+          positioningReport: newReport,
+          positioningOptions: updatedOptions.length > 0 ? updatedOptions : [newReport],
+        };
+      });
       setPositioningFeedback('');
+      // 保存修改后的报告
+      saveResultToStorage('positioning_report', newReport, state.user?.uid);
     } catch (error) {
       console.error("Modify positioning error:", error);
     } finally {
