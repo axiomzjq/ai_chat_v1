@@ -1882,6 +1882,36 @@ export default function App() {
     }
   };
 
+  /** 清除当前用户的 localStorage 数据（调试用） */
+  const clearUserLocalData = () => {
+    const userId = state.user?.uid;
+    if (!userId) {
+      alert('未检测到登录用户，无法清除本地数据。');
+      return;
+    }
+    const confirmed = window.confirm(
+      `确定清除当前用户（${state.user?.phone || state.user?.email || userId}）的本地缓存吗？\n\n这将删除：\n- 对话历史\n- 访谈结果\n- 定位报告\n- 选题池\n- UI 状态\n\n后端数据库数据不受影响。`
+    );
+    if (!confirmed) return;
+
+    const keysToRemove = [
+      getUserScopedKey('founder_ip_history', userId),
+      getUserScopedKey(UI_STATE_KEY, userId),
+      getUserScopedKey('result_interview_report', userId),
+      getUserScopedKey('result_info_report', userId),
+      getUserScopedKey('result_positioning_report', userId),
+      getUserScopedKey('result_topic_pool', userId),
+    ];
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+
+    // 同时清除 auth token 缓存
+    localStorage.removeItem('authing_access_token');
+    localStorage.removeItem('firebase_user_cache');
+
+    alert('✅ 本地缓存已清除，页面将重新加载。');
+    window.location.reload();
+  };
+
   const generateHistoryTitle = (): string => {
     // 优先用文案标题，其次用定位方案名，再其次用公司名/姓名
     const cwTitle = state.copywritingOutput.titles[state.copywritingOutput.selectedTitleIndex || 0];
@@ -4254,6 +4284,13 @@ ${topicRefContent}` : '');
               >
                 <Trash2 className="w-5 h-5" />
               </button>
+              <button
+                onClick={clearUserLocalData}
+                className="p-2 text-gray-400 hover:text-orange-600 transition-colors"
+                title="清除本地缓存：清空当前用户的 localStorage 数据"
+              >
+                <Database className="w-5 h-5" />
+              </button>
             </>
           )}
           <button
@@ -4292,6 +4329,13 @@ ${topicRefContent}` : '');
                 title="一键还原：清空所有用户数据"
               >
                 <Trash2 className="w-5 h-5 text-red-500" />
+              </button>
+              <button
+                onClick={clearUserLocalData}
+                className="p-2 bg-gray-50 rounded-lg"
+                title="清除本地缓存：清空当前用户的 localStorage 数据"
+              >
+                <Database className="w-5 h-5 text-orange-500" />
               </button>
             </>
           )}
