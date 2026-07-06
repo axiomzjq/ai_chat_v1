@@ -174,11 +174,11 @@ export function getUserScopedKey(baseKey: string, userId: string): string {
 type Step = 'interview' | 'information' | 'positioning' | 'topic' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], userRole?: 'user' | 'admin') => {
+const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], positioningReport?: string, userRole?: 'user' | 'admin') => {
   if (stepId === 'interview' || stepId === 'history') return true;
   if (userRole === 'admin') return true;
   if (stepId === 'positioning') return !!interviewReport;
-  if (stepId === 'topic') return !!interviewReport; // 需要访谈报告
+  if (stepId === 'topic') return !!positioningReport; // 需要定位报告
   if (stepId === 'copywriting') return !!topicPool.length; // 需要选题池
   return false;
 };
@@ -338,7 +338,7 @@ function StepIndicator({ currentStep, onStepClick, state }: {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
         const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.topicPool, state.user?.role);
+        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
 
         return (
           <React.Fragment key={step.id}>
@@ -2689,19 +2689,13 @@ ${relevantKnowledge}`,
                   <p className="text-gray-500 text-xs md:text-sm leading-relaxed">
                     定位顾问将为您生成三版不同的IP定位方案，您可以根据自己的喜好进行选择和微调。
                   </p>
-                  <button 
+                  <button
                     onClick={generatePositioningReport}
                     disabled={isGeneratingPositioning}
                     className="w-full bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:bg-gray-200 text-sm"
                   >
                     {isGeneratingPositioning ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
                     生成三版定位方案
-                  </button>
-                  <button
-                    onClick={() => setCurrentStep('topic')}
-                    className="w-full text-gray-400 hover:text-black transition-colors text-xs font-bold py-2"
-                  >
-                    跳过此步，直接进入选题创作
                   </button>
                 </div>
               )}
@@ -2882,8 +2876,8 @@ ${relevantKnowledge}`,
                 <div>
                   <h3 className="text-lg md:text-xl font-bold text-black mb-2">尚未生成选题池</h3>
                   <p className="text-sm text-gray-500 leading-relaxed">
-                    选题池基于您的访谈结果和定位报告生成，包含 4 个阶段的详细选题规划。
-                    <br/>请先完成访谈和定位，然后点击下方按钮生成选题。
+                    选题池基于您的定位报告生成，包含 4 个阶段的详细选题规划。
+                    <br/>请先完成定位，然后点击下方按钮生成选题。
                   </p>
                 </div>
                 <button
@@ -2895,7 +2889,7 @@ ${relevantKnowledge}`,
                   {isLoading ? '生成中...' : '生成选题池'}
                 </button>
                 <p className="text-[10px] text-gray-400">
-                  需要先完成访谈并生成定位报告
+                  需要先完成定位并生成定位报告
                 </p>
               </div>
             </div>
@@ -4056,18 +4050,18 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
       .join('\n\n');
 
-    return `请根据以下信息，生成一个完整的选题规划池。
+    return `你是一位专业的选题策划顾问。请严格基于【定位报告】来规划选题，定位报告是选题的唯一核心依据。
 
-【访谈报告】：
-${interviewReport || "（暂无，请基于通用创始人 IP 内容逻辑生成）"}
+【定位报告】（必须严格遵循）：
+${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成，并提示用户先完成定位）"}
 
-【定位报告】：
-${positioningReport || "（暂无，请基于通用内容逻辑生成）"}
+${interviewReport ? `【访谈报告】（仅作背景参考，选题方向以定位报告为准）：
+${interviewReport}` : ''}
 
 ${knowledgeContext ? `【参考语料】：
 ${knowledgeContext}` : ""}
 
-请严格按照 JSON 格式输出，包含 4 个阶段的选题规划。`;
+请严格按照 JSON 格式输出，包含 4 个阶段的选题规划。每个选题必须与定位报告中的人物主线、内容方向、平台侧重保持一致。`;
   };
 
   /**
