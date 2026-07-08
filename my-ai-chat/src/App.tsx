@@ -2408,7 +2408,7 @@ ${relevantKnowledge}`,
               </div>
               <button
                 onClick={() => {
-                  if (isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.user?.role)) {
+                  if (isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.positioningReport, state.user?.role)) {
                     setCurrentStep('positioning');
                   } else {
                     alert('请先完成访谈并生成深度报告');
@@ -2416,7 +2416,7 @@ ${relevantKnowledge}`,
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.user?.role)
+                  isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.positioningReport, state.user?.role)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -4255,7 +4255,7 @@ ${topicRefContent}` : '');
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.topicPool, state.user?.role);
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
             return (
               <button
                 key={step.id}
