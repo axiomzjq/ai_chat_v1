@@ -2111,10 +2111,10 @@ export default function App() {
             setState(prev => ({
               ...prev,
               interviewReport: data.interview_data?.report || prev.interviewReport,
-              infoReport: typeof data.information_report === 'string' ? data.information_report : prev.infoReport,
-              positioningReport: typeof data.positioning_report === 'string' ? data.positioning_report : '',
-              positioningOptions: Array.isArray(data.positioning_options) ? data.positioning_options : prev.positioningOptions,
-              topicPool: Array.isArray(data.topic_pool) ? data.topic_pool : prev.topicPool,
+              infoReport: typeof data.information_report === 'string' && data.information_report ? data.information_report : prev.infoReport,
+              positioningReport: typeof data.positioning_report === 'string' && data.positioning_report ? data.positioning_report : prev.positioningReport,
+              positioningOptions: Array.isArray(data.positioning_options) && data.positioning_options.length > 0 ? data.positioning_options : prev.positioningOptions,
+              topicPool: Array.isArray(data.topic_pool) && data.topic_pool.length > 0 ? data.topic_pool : prev.topicPool,
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
               copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
@@ -3679,8 +3679,18 @@ ${positioningFeedback}
         };
       });
       setPositioningFeedback('');
-      // 保存修改后的报告
+      // 立即保存到 localStorage + 服务器（防止刷新丢失）
       saveResultToStorage('positioning_report', newReport, state.user?.uid);
+      saveResultToStorage('positioning_options', state.positioningOptions.map((opt, i) => i === (state.selectedPositioningIndex ?? 0) ? newReport : opt), state.user?.uid);
+      // 同步到服务器
+      try {
+        await api.updateUserProfile({
+          positioning_report: newReport,
+          positioning_options: state.positioningOptions.map((opt, i) => i === (state.selectedPositioningIndex ?? 0) ? newReport : opt),
+        });
+      } catch (e) {
+        console.error('修改定位保存到服务器失败:', e);
+      }
     } catch (error) {
       console.error("Modify positioning error:", error);
     } finally {
@@ -4070,6 +4080,14 @@ ${knowledgeContext}` : ""}
   const generateTopicPool = async () => {
     setIsGeneratingTopics(true);
     try {
+      // 确保定位报告可用
+      const effectivePositioningReport = state.positioningReport || '';
+      if (!effectivePositioningReport) {
+        alert('定位报告为空，请先完成定位并生成定位报告。');
+        setIsGeneratingTopics(false);
+        return;
+      }
+
       const topicRefContent = await getStepRefsContent('topic');
 
       const systemPrompt = TOPIC_SYSTEM_PROMPT
@@ -4078,12 +4096,20 @@ ${knowledgeContext}` : ""}
 【参考文件 · 选题提示词 + 写作技巧提示词】：
 ${topicRefContent}` : '');
 
+      console.log('[TopicPool] 开始生成选题池...', {
+        hasPositioningReport: !!effectivePositioningReport,
+        reportLength: effectivePositioningReport.length,
+        hasInterviewReport: !!state.interviewReport,
+      });
+
       const aiResponse = await deepseek.generateText({
         model: deepseek.MODELS.fast,
         system: systemPrompt,
-        prompt: buildTopicPrompt(state.interviewReport, state.positioningReport),
+        prompt: buildTopicPrompt(state.interviewReport, effectivePositioningReport),
         onUsage: reportTokenUsage,
       });
+
+      console.log('[TopicPool] AI 返回内容长度:', aiResponse?.length);
 
       const parsed = parseTopicPool(aiResponse || '');
 
@@ -4094,24 +4120,25 @@ ${topicRefContent}` : '');
           topicGenerationStatus: 'completed',
         }));
         saveResultToStorage('topic_pool', parsed.stages, state.user?.uid);
+        console.log('[TopicPool] 选题池生成成功，阶段数:', parsed.stages.length);
       } else {
-        console.warn('选题 JSON 解析失败，使用 Demo 数据（仅当前会话有效）');
+        console.warn('选题 JSON 解析失败，AI 返回内容:', aiResponse?.slice(0, 500));
+        alert('选题生成返回格式异常，请稍后重试。如持续出现，请联系技术支持。');
         const demoData = getDemoTopicPool();
         setState(prev => ({
           ...prev,
           topicPool: demoData,
           topicGenerationStatus: 'demo_fallback',
         }));
-        // Demo 降级数据不保存到 localStorage，刷新后显示空状态
       }
     } catch (error) {
       console.error('选题生成失败:', error);
+      alert('选题生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
       setState(prev => ({
         ...prev,
         topicPool: getDemoTopicPool(),
         topicGenerationStatus: 'demo_fallback',
       }));
-      // Demo 降级数据不保存到 localStorage，刷新后显示空状态
     } finally {
       setIsGeneratingTopics(false);
     }
