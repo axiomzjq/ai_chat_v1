@@ -4078,12 +4078,14 @@ ${knowledgeContext}` : ""}
    * 调用 AI 生成选题池
    */
   const generateTopicPool = async () => {
+    setState(prev => ({ ...prev, topicGenerationStatus: 'generating' }));
     setIsGeneratingTopics(true);
     try {
       // 确保定位报告可用
       const effectivePositioningReport = state.positioningReport || '';
       if (!effectivePositioningReport) {
         alert('定位报告为空，请先完成定位并生成定位报告。');
+        setState(prev => ({ ...prev, topicGenerationStatus: 'idle' }));
         setIsGeneratingTopics(false);
         return;
       }
