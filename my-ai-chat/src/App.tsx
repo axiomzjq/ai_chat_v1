@@ -2977,8 +2977,9 @@ ${relevantKnowledge}`,
                   key={topic.id}
                   onClick={() => {
                     setSelectedTopic(topic);
+                    setCopywritingTopic(topic.title);
                     setState(prev => ({ ...prev, selectedTopic: topic, copywritingTopic: topic.title }));
-                    setCurrentStep('copywriting');
+                    generateCopywriting(topic.title);
                   }}
                   className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
