@@ -3894,37 +3894,64 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
    * 处理多种返回格式：纯 JSON、Markdown 包裹、前后有废话等
    */
   const parseTopicPool = (aiResponse: string): { stages: any[] } | null => {
+    let parsed: any = null;
+
     try {
       // 策略1: 直接尝试解析（纯 JSON 情况）
-      return JSON.parse(aiResponse);
+      parsed = JSON.parse(aiResponse);
     } catch {
       // 继续尝试其他策略
     }
 
-    try {
-      // 策略2: 提取 Markdown 代码块中的 JSON
-      const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (codeBlockMatch) {
-        return JSON.parse(codeBlockMatch[1]);
+    if (!parsed) {
+      try {
+        // 策略2: 提取 Markdown 代码块中的 JSON
+        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          parsed = JSON.parse(codeBlockMatch[1]);
+        }
+      } catch {
+        // 继续尝试
       }
-    } catch {
-      // 继续尝试
     }
 
-    try {
-      // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
-      const firstBrace = aiResponse.indexOf('{');
-      const lastBrace = aiResponse.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        const jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
-        return JSON.parse(jsonStr);
+    if (!parsed) {
+      try {
+        // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
+        const firstBrace = aiResponse.indexOf('{');
+        const lastBrace = aiResponse.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
+          parsed = JSON.parse(jsonStr);
+        }
+      } catch {
+        // 继续尝试
       }
-    } catch {
-      // 继续尝试
     }
 
-    // 策略4: 所有策略都失败
-    console.error('选题 JSON 解析失败，AI 返回内容:', aiResponse);
+    if (!parsed) {
+      console.error('选题 JSON 解析失败，AI 返回内容:', aiResponse);
+      return null;
+    }
+
+    // 归一化：支持两种格式
+    // 格式A: { "stages": [...] } （期望格式）
+    // 格式B: [...] （AI 有时直接返回数组）
+    if (Array.isArray(parsed)) {
+      return { stages: parsed };
+    }
+    if (parsed.stages && Array.isArray(parsed.stages)) {
+      return parsed;
+    }
+
+    console.warn('选题 JSON 格式不符，尝试自动包装:', parsed);
+    // 尝试把顶层数组字段包装成 stages
+    const arrayField = Object.values(parsed).find((v: any) => Array.isArray(v) && v.length > 0 && v[0]?.stage);
+    if (arrayField) {
+      return { stages: arrayField as any[] };
+    }
+
+    console.error('选题 JSON 无法识别格式:', parsed);
     return null;
   };
 
@@ -4060,7 +4087,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
       .join('\n\n');
 
-    return `请严格基于【定位报告】规划选题。你只能输出 JSON，禁止任何其他文字。
+    return `请严格基于【定位报告】规划选题。你只能输出纯 JSON，禁止任何其他文字、markdown 标记、代码块标记。
 
 【定位报告】（唯一核心依据）：
 ${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成）"}
@@ -4071,35 +4098,8 @@ ${interviewReport}` : ''}
 ${knowledgeContext ? `【参考语料】：
 ${knowledgeContext}` : ""}
 
-输出格式：
-\`\`\`json
-{
-  "stages": [
-    {
-      "stage": 1,
-      "name": "0-30天：建立可信主线",
-      "goal": "阶段目标（1-2句话）",
-      "coreTask": "核心任务（关键词组合）",
-      "platform": "推荐平台",
-      "style": "推荐风格",
-      "direction": "方向判断",
-      "notRecommended": "不建议方向",
-      "nextAction": "下一步行动",
-      "topics": [
-        {
-          "id": "WZ-S1-001",
-          "title": "选题标题（15-30字，有钩子感）",
-          "hookType": "反差判断型",
-          "hook3s": "3秒钩子（不超过30字）",
-          "platform": "抖音 + 视频号",
-          "priority": "P0",
-          "status": "approved"
-        }
-      ]
-    }
-  ]
-}
-\`\`\`
+输出格式（严格遵循，不要输出任何其他内容）：
+{"stages":[{"stage":1,"name":"0-30天：建立可信主线","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S1-001","title":"选题标题","hookType":"反差判断型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":2,"name":"31-60天：信任深挖","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S2-001","title":"选题标题","hookType":"观点金句型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":3,"name":"61-90天：认知拔高","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S3-001","title":"选题标题","hookType":"机制证明型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":4,"name":"90天后：变现闭环","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S4-001","title":"选题标题","hookType":"案例结果型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]}]}
 
 4 个阶段，每阶段 10-15 条选题。`;
   };
