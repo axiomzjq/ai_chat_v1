@@ -3928,8 +3928,10 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         const lastBrace = aiResponse.lastIndexOf('}');
         console.log('[parseTopicPool] 策略3: firstBrace=', firstBrace, 'lastBrace=', lastBrace, 'responseLength=', responseLength);
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          const jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
+          let jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
           console.log('[parseTopicPool] 策略3 提取的 JSON 长度:', jsonStr.length, '前100字符:', jsonStr.slice(0, 100));
+          // 尝试修复截断的 JSON
+          jsonStr = repairTruncatedJson(jsonStr);
           parsed = JSON.parse(jsonStr);
           console.log('[parseTopicPool] 策略3 解析成功');
         }
@@ -3962,6 +3964,40 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
 
     console.error('[parseTopicPool] 无法识别格式:', parsed);
     return null;
+  };
+
+  /**
+   * 修复被截断的 JSON（补全缺失的 ] 和 }）
+   * 当 AI 输出超过 max_tokens 限制时，JSON 末尾可能被截断
+   */
+  const repairTruncatedJson = (jsonStr: string): string => {
+    // 移除末尾可能的不完整内容（从最后一个完整的 } 之后截断）
+    let lastBrace = jsonStr.lastIndexOf('}');
+    if (lastBrace !== -1) {
+      // 检查 } 后面是否有非空白字符
+      const afterBrace = jsonStr.slice(lastBrace + 1).trim();
+      if (afterBrace.length > 0) {
+        // 有不完整的内容，截断到最后一个 }
+        jsonStr = jsonStr.slice(0, lastBrace + 1);
+      }
+    }
+
+    // 计算需要补多少个 ]
+    const openBrackets = (jsonStr.match(/\[/g) || []).length;
+    const closeBrackets = (jsonStr.match(/\]/g) || []).length;
+    const missingCloseBrackets = openBrackets - closeBrackets;
+
+    // 计算需要补多少个 }
+    const openBraces = (jsonStr.match(/\{/g) || []).length;
+    const closeBraces = (jsonStr.match(/\}/g) || []).length;
+    const missingCloseBraces = openBraces - closeBraces;
+
+    if (missingCloseBrackets > 0 || missingCloseBraces > 0) {
+      console.log(`[repairTruncatedJson] 补全 JSON: 缺失 ] x${missingCloseBrackets}, } x${missingCloseBraces}`);
+      jsonStr += ']'.repeat(missingCloseBrackets) + '}'.repeat(missingCloseBraces);
+    }
+
+    return jsonStr;
   };
 
   /**
@@ -4147,6 +4183,7 @@ ${topicRefContent}` : '');
         model: deepseek.MODELS.fast,
         system: systemPrompt,
         prompt: buildTopicPrompt(state.interviewReport, effectivePositioningReport),
+        max_tokens: 16000, // 选题池输出量大（4阶段×12选题），需要足够空间
         onUsage: reportTokenUsage,
       });
 
