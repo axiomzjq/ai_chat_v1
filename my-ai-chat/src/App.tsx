@@ -4060,18 +4060,48 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
       .join('\n\n');
 
-    return `你是一位专业的选题策划顾问。请严格基于【定位报告】来规划选题，定位报告是选题的唯一核心依据。
+    return `请严格基于【定位报告】规划选题。你只能输出 JSON，禁止任何其他文字。
 
-【定位报告】（必须严格遵循）：
-${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成，并提示用户先完成定位）"}
+【定位报告】（唯一核心依据）：
+${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成）"}
 
-${interviewReport ? `【访谈报告】（仅作背景参考，选题方向以定位报告为准）：
+${interviewReport ? `【访谈报告】（背景参考，选题方向以定位报告为准）：
 ${interviewReport}` : ''}
 
 ${knowledgeContext ? `【参考语料】：
 ${knowledgeContext}` : ""}
 
-请严格按照 JSON 格式输出，包含 4 个阶段的选题规划。每个选题必须与定位报告中的人物主线、内容方向、平台侧重保持一致。`;
+输出格式：
+\`\`\`json
+{
+  "stages": [
+    {
+      "stage": 1,
+      "name": "0-30天：建立可信主线",
+      "goal": "阶段目标（1-2句话）",
+      "coreTask": "核心任务（关键词组合）",
+      "platform": "推荐平台",
+      "style": "推荐风格",
+      "direction": "方向判断",
+      "notRecommended": "不建议方向",
+      "nextAction": "下一步行动",
+      "topics": [
+        {
+          "id": "WZ-S1-001",
+          "title": "选题标题（15-30字，有钩子感）",
+          "hookType": "反差判断型",
+          "hook3s": "3秒钩子（不超过30字）",
+          "platform": "抖音 + 视频号",
+          "priority": "P0",
+          "status": "approved"
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+4 个阶段，每阶段 10-15 条选题。`;
   };
 
   /**
