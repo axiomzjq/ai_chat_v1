@@ -3895,11 +3895,14 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
    */
   const parseTopicPool = (aiResponse: string): { stages: any[] } | null => {
     let parsed: any = null;
+    const responseLength = aiResponse.length;
 
     try {
       // 策略1: 直接尝试解析（纯 JSON 情况）
       parsed = JSON.parse(aiResponse);
-    } catch {
+      console.log('[parseTopicPool] 策略1 直接解析成功, type:', Array.isArray(parsed) ? 'array' : 'object');
+    } catch (e: any) {
+      console.log('[parseTopicPool] 策略1 失败:', e?.message || e);
       // 继续尝试其他策略
     }
 
@@ -3909,9 +3912,12 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (codeBlockMatch) {
           parsed = JSON.parse(codeBlockMatch[1]);
+          console.log('[parseTopicPool] 策略2 代码块解析成功');
+        } else {
+          console.log('[parseTopicPool] 策略2 未找到代码块');
         }
-      } catch {
-        // 继续尝试
+      } catch (e: any) {
+        console.log('[parseTopicPool] 策略2 失败:', e?.message || e);
       }
     }
 
@@ -3920,17 +3926,20 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
         const firstBrace = aiResponse.indexOf('{');
         const lastBrace = aiResponse.lastIndexOf('}');
+        console.log('[parseTopicPool] 策略3: firstBrace=', firstBrace, 'lastBrace=', lastBrace, 'responseLength=', responseLength);
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
+          console.log('[parseTopicPool] 策略3 提取的 JSON 长度:', jsonStr.length, '前100字符:', jsonStr.slice(0, 100));
           parsed = JSON.parse(jsonStr);
+          console.log('[parseTopicPool] 策略3 解析成功');
         }
-      } catch {
-        // 继续尝试
+      } catch (e: any) {
+        console.log('[parseTopicPool] 策略3 失败:', e?.message || e);
       }
     }
 
     if (!parsed) {
-      console.error('选题 JSON 解析失败，AI 返回内容:', aiResponse);
+      console.error('[parseTopicPool] 所有策略都失败。AI 返回内容长度:', responseLength, '前500字符:', aiResponse.slice(0, 500));
       return null;
     }
 
@@ -3944,14 +3953,14 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       return parsed;
     }
 
-    console.warn('选题 JSON 格式不符，尝试自动包装:', parsed);
+    console.warn('[parseTopicPool] 格式不符，parsed keys:', Object.keys(parsed));
     // 尝试把顶层数组字段包装成 stages
     const arrayField = Object.values(parsed).find((v: any) => Array.isArray(v) && v.length > 0 && v[0]?.stage);
     if (arrayField) {
       return { stages: arrayField as any[] };
     }
 
-    console.error('选题 JSON 无法识别格式:', parsed);
+    console.error('[parseTopicPool] 无法识别格式:', parsed);
     return null;
   };
 
