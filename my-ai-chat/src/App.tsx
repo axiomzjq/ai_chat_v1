@@ -3888,6 +3888,7 @@ ${state.infoReport || "（暂无）"}
 
 【上传资料内容】：
 ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
+        max_tokens: 16000, // 文案输出量大（3标题+1脚本），需要足够空间
         onUsage: reportTokenUsage,
       });
 
@@ -3902,6 +3903,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
       }));
     } catch (error) {
       console.error("Copywriting generation error:", error);
+      alert('文案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
     } finally {
       setIsGeneratingCopywriting(false);
     }
