@@ -217,8 +217,6 @@ interface HistoryItem {
   selectedPositioningIndex: number | null;
   positioningReport: string;
   // 文案阶段
-  copywritingMessages: Message[];
-  isCopywritingChatMode: boolean;
   copywritingOutput: {
     titles: string[];
     selectedTitleIndex: number | null;
@@ -250,8 +248,6 @@ interface AppState {
     selectedTitleIndex: number | null;
     content: string;
   };
-  copywritingMessages: Message[];
-  isCopywritingChatMode: boolean;
   history: HistoryItem[];
   user: UserProfile | null;
   view: View;
@@ -499,8 +495,6 @@ const initialState: AppState = {
     selectedTitleIndex: null,
     content: '',
   },
-  copywritingMessages: [],
-  isCopywritingChatMode: false,
   history: [],
   user: null,
   view: 'login',
@@ -1578,7 +1572,6 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>(_uiState.currentStep);
   const [topicStage, setTopicStage] = useState(1); // 当前选题阶段标签
   const [selectedTopic, setSelectedTopic] = useState<any>(null); // 选中的选题
-  const selectedTopicAutoGenRef = useRef<string | null>(null); // 追踪选题自动生成，避免重复触发
   const [isGeneratingTopics, setIsGeneratingTopics] = useState(false); // 选题生成中
 
   // 参考文件缓存（避免重复 fetch）
@@ -1823,7 +1816,7 @@ export default function App() {
 
   const resetAllData = () => {
     try {
-      const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content || state.copywritingMessages.length > 0;
+      const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content;
       const confirmMsg = hasAnyData
         ? '确定要清空当前会话并保存到历史记录吗？\n\n当前对话和生成内容将保存到历史，然后重新开始。'
         : '确定要清空所有用户数据吗？\n\n这将删除所有访谈对话记录、报告、文案和上传资料。\n\n此操作不可恢复。';
@@ -1853,8 +1846,6 @@ export default function App() {
           positioningOptions: state.positioningOptions,
           selectedPositioningIndex: state.selectedPositioningIndex,
           positioningReport: state.positioningReport,
-          copywritingMessages: state.copywritingMessages,
-          isCopywritingChatMode: state.isCopywritingChatMode,
           copywritingOutput: { ...state.copywritingOutput },
           uploadedMaterials: [...state.uploadedMaterials],
         };
@@ -1877,8 +1868,6 @@ export default function App() {
         selectedPositioningIndex: null,
         positioningReport: '',
         copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
-        copywritingMessages: [],
-        isCopywritingChatMode: false,
         uploadedMaterials: [],
       }));
       alert(hasAnyData ? '✅ 当前会话已保存到历史记录，重新开始。' : '✅ 所有数据已清空，重新开始。');
@@ -1954,8 +1943,6 @@ export default function App() {
       positioningOptions: state.positioningOptions,
       selectedPositioningIndex: state.selectedPositioningIndex,
       positioningReport: state.positioningReport,
-      copywritingMessages: state.copywritingMessages,
-      isCopywritingChatMode: state.isCopywritingChatMode,
       copywritingOutput: { ...state.copywritingOutput },
       uploadedMaterials: [...state.uploadedMaterials],
     };
@@ -2117,7 +2104,6 @@ export default function App() {
               positioningOptions: Array.isArray(data.positioning_options) && data.positioning_options.length > 0 ? data.positioning_options : prev.positioningOptions,
               topicPool: Array.isArray(data.topic_pool) && data.topic_pool.length > 0 ? data.topic_pool : prev.topicPool,
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
-              copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
           }
         } catch (error) {
@@ -2144,7 +2130,6 @@ export default function App() {
             topic_pool: state.topicPool,
             copywriting_data: {
               output: state.copywritingOutput,
-              messages: state.copywritingMessages,
             },
           });
         } catch (error) {
@@ -2165,7 +2150,6 @@ export default function App() {
     state.positioningOptions,
     state.topicPool,
     state.copywritingOutput,
-    state.copywritingMessages,
     state.uploadedMaterials
   ]);
   const [input, setInput] = useState('');
@@ -2978,9 +2962,10 @@ ${relevantKnowledge}`,
                   key={topic.id}
                   onClick={() => {
                     setSelectedTopic(topic);
-                    setCopywritingTopic(topic.title);
-                    setState(prev => ({ ...prev, selectedTopic: topic, copywritingTopic: topic.title }));
+                    setState(prev => ({ ...prev, selectedTopic: topic }));
                     setCurrentStep('copywriting');
+                    // 选中选题后直接生成文案
+                    generateCopywriting(topic);
                   }}
                   className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
@@ -3064,161 +3049,40 @@ ${relevantKnowledge}`,
                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
                   <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
-                <h2 className="text-base md:text-xl font-bold">文案顾问：内容创作</h2>
+                <h2 className="text-base md:text-xl font-bold">文案创作</h2>
               </div>
               <div className="w-10 md:w-20" />
             </div>
 
-            {!state.copywritingOutput.content ? (
-              state.isCopywritingChatMode ? (
-                <div className="flex-1 flex flex-col bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden mb-4 min-h-[500px]">
-                  <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">思路整理中...</span>
-                    </div>
-                    <button 
-                      onClick={() => generateCopywriting()}
-                      disabled={isGeneratingCopywriting}
-                      className="px-4 py-2 bg-black text-white rounded-full text-xs font-bold hover:bg-gray-800 transition-all flex items-center gap-2"
-                    >
-                      {isGeneratingCopywriting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      生成最终文案
-                    </button>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                    {state.copywritingMessages.map((msg, idx) => {
-                      const isLastModel = msg.role === 'model' && isCopywritingThinking && idx === state.copywritingMessages.length - 1;
-                      return (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className={cn("flex gap-3 md:gap-4", msg.role === 'user' ? "flex-row-reverse" : "")}
-                        >
-                          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-100 shadow-sm">
-                            <img src={msg.role === 'user' ? USER_AVATAR : BOT_AVATAR} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </div>
-                          <div className={cn(
-                            "max-w-[85%] md:max-w-[70%] p-3 md:p-4 rounded-2xl text-sm md:text-base shadow-sm",
-                            msg.role === 'user' ? "bg-black text-white rounded-tr-none" : "bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100"
-                          )}>
-                            <div className="markdown-body prose prose-sm max-w-none prose-inherit">
-                              <ReactMarkdown>{msg.text}</ReactMarkdown>
-                              {isLastModel && (
-                                <span className="inline-flex items-center gap-[3px] ml-1 h-5">
-                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
-                                  <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
-                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.4s' }} />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                    <div ref={copywritingEndRef} />
-                  </div>
+            {/* 生成中：显示加载状态 */}
+            {isGeneratingCopywriting && !state.copywritingOutput.content && (
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+                <Loader2 className="w-10 h-10 animate-spin text-black" />
+                <p className="text-sm text-gray-500 font-medium">AI 正在为您创作文案，请稍候...</p>
+                {state.selectedTopic && (
+                  <p className="text-xs text-gray-400">选题：{state.selectedTopic.title}</p>
+                )}
+              </div>
+            )}
 
-                  <div className="p-4 border-t border-gray-50 bg-white">
-                    <div className="relative group max-w-4xl mx-auto w-full">
-                      <input 
-                        type="text"
-                        value={copywritingTopic}
-                        onChange={(e) => setCopywritingTopic(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCopywritingMessage(copywritingTopic)}
-                        placeholder="继续完善您的想法..."
-                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm shadow-sm"
-                      />
-                      <button 
-                        onClick={() => handleCopywritingMessage(copywritingTopic)}
-                        disabled={isCopywritingThinking || !copywritingTopic.trim()}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all"
-                      >
-                        <Send size={18} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full space-y-8 text-center"
-                >
-                  <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full overflow-hidden flex items-center justify-center shadow-inner border border-gray-100">
-                    <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover opacity-80" referrerPolicy="no-referrer" />
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <h3 className="text-2xl md:text-3xl font-bold">准备好开始创作了吗？</h3>
-                    <p className="text-gray-400 text-sm md:text-base px-4">
-                      请从 Agent 2 规划的选题库中挑选一个主题，或者输入你今天想分享的任何想法。
-                    </p>
-                  </div>
-
-                  <div className="w-full relative group max-w-lg">
-                    <input 
-                      type="text"
-                      value={copywritingTopic}
-                      onChange={(e) => setCopywritingTopic(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleCopywritingMessage(copywritingTopic)}
-                      placeholder="输入选题或主题..."
-                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-5 px-6 pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm shadow-sm"
-                    />
-                    <button 
-                      onClick={() => handleCopywritingMessage(copywritingTopic)}
-                      disabled={isCopywritingThinking || !copywritingTopic.trim()}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all shadow-lg"
-                    >
-                      <Sparkles size={20} />
-                    </button>
-                  </div>
-
-                  <div className="w-full space-y-4">
-                    {state.positioningReport && state.positioningReport.match(/选题[：:](.*)/g) && (
-                      <>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">推荐选题 (来自定位方案)</p>
-                        <div className="flex flex-wrap justify-center gap-2">
-                          {state.positioningReport.match(/选题[：:](.*)/g)?.slice(0, 5).map((t, i) => {
-                            const title = t.replace(/选题[：:]\s*/, '').trim();
-                            return (
-                              <button 
-                                key={i}
-                                onClick={() => {
-                                  setCopywritingTopic(title);
-                                  generateCopywriting(title);
-                                }}
-                                className="px-4 py-2 bg-white border border-gray-100 rounded-full text-xs text-gray-500 hover:border-black hover:text-black transition-all shadow-sm"
-                              >
-                                {title}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            ) : (
+            {/* 文案结果 */}
+            {state.copywritingOutput.content && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-4">备选标题</h4>
                     <div className="flex flex-col gap-2">
                       {state.copywritingOutput.titles.map((title, idx) => (
-                        <button 
+                        <button
                           key={idx}
-                          onClick={() => setState(prev => ({ 
-                            ...prev, 
-                            copywritingOutput: { ...prev.copywritingOutput, selectedTitleIndex: idx } 
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            copywritingOutput: { ...prev.copywritingOutput, selectedTitleIndex: idx }
                           }))}
                           className={cn(
                             "p-4 rounded-xl text-left text-sm transition-all border",
-                            state.copywritingOutput.selectedTitleIndex === idx 
-                              ? "bg-black text-white border-black shadow-lg shadow-black/10" 
+                            state.copywritingOutput.selectedTitleIndex === idx
+                              ? "bg-black text-white border-black shadow-lg shadow-black/10"
                               : "bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-200"
                           )}
                         >
@@ -3234,7 +3098,7 @@ ${relevantKnowledge}`,
                   <div className="bg-gray-50 rounded-2xl md:rounded-3xl p-4 md:p-8 border border-gray-100 overflow-y-auto max-h-[400px] md:max-h-[600px]">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">口播脚本</span>
-                      <button 
+                      <button
                         onClick={() => handleCopy(state.copywritingOutput.content, 'copywriting')}
                         className="text-xs text-gray-400 hover:text-black transition-colors flex items-center gap-1"
                       >
@@ -3258,20 +3122,18 @@ ${relevantKnowledge}`,
                     </ul>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <button 
+                    <button
                       onClick={() => {
                         setState(prev => ({
                           ...prev,
                           copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
-                          isCopywritingChatMode: false,
-                          copywritingMessages: []
                         }));
                       }}
                       className="w-full bg-gray-50 text-gray-600 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-100 transition-all text-sm"
                     >
                       <ArrowLeft size={16} /> 重新选择选题
                     </button>
-                    <button 
+                    <button
                       onClick={addToHistory}
                       className="w-full bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 text-sm"
                     >
@@ -3381,8 +3243,6 @@ ${relevantKnowledge}`,
                               positioningOptions: item.positioningOptions || [],
                               selectedPositioningIndex: item.selectedPositioningIndex ?? null,
                               positioningReport: item.positioningReport || '',
-                              copywritingMessages: item.copywritingMessages || [],
-                              isCopywritingChatMode: item.isCopywritingChatMode || false,
                               copywritingOutput: item.copywritingOutput ? { ...item.copywritingOutput } : { titles: [], selectedTitleIndex: null, content: '' },
                               uploadedMaterials: item.uploadedMaterials ? [...item.uploadedMaterials] : [],
                             }));
@@ -3700,145 +3560,17 @@ ${positioningFeedback}
     }
   };
 
-  // --- Copywriting Agent State ---
+  // --- Copywriting Generation State ---
   const [isGeneratingCopywriting, setIsGeneratingCopywriting] = useState(false);
-  const [copywritingTopic, setCopywritingTopic] = useState('');
-  const [isCopywritingThinking, setIsCopywritingThinking] = useState(false);
-  const copywritingEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    copywritingEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [state.copywritingMessages]);
-
-  // 从选题页面选中选题后，自动进入文案生成
-  useEffect(() => {
-    if (currentStep !== 'copywriting') {
-      // 离开文案页时重置追踪，下次进入时可重新生成
-      selectedTopicAutoGenRef.current = null;
-      return;
-    }
-    if (!state.selectedTopic || state.copywritingOutput.titles.length > 0) return;
-    const topicId = state.selectedTopic.id;
-    if (selectedTopicAutoGenRef.current === topicId) return; // 已生成过，跳过
-    selectedTopicAutoGenRef.current = topicId;
-    setCopywritingTopic(state.selectedTopic.title);
-    generateCopywriting(state.selectedTopic);
-  }, [currentStep, state.selectedTopic, state.copywritingOutput.titles.length]);
-
-  const analyzeCopywritingInteraction = async (userText: string, modelText: string) => {
-    try {
-      const analysisText = await deepseek.generateText({
-        model: deepseek.MODELS.fast,
-        system: "你是一个专业的对话分析助手。请严格按照用户要求的 JSON 格式输出，不要输出任何额外的解释文字。",
-        prompt: `请分析以下对话，提取有价值的信息：
-用户说：${userText}
-AI说：${modelText}
-
-任务：
-1. 提取用户提到的行业见解、个人观点、创业故事等，作为访谈报告的补充素材。
-2. 识别用户的情绪，判断是否对产品使用有不满或建议。
-
-输出格式：JSON
-{
-  "supplementaryMaterial": "提取的素材内容，如果没有则为空字符串",
-  "feedback": "识别到的产品反馈，如果没有则为空字符串",
-  "sentiment": "情绪描述"
-}`,
-      });
-
-      const analysis = JSON.parse(analysisText || '{}');
-      
-      if (analysis.supplementaryMaterial) {
-        setState(prev => ({
-          ...prev,
-          interviewReport: prev.interviewReport + "\n\n### 补充素材 (来自文案创作对话)\n" + analysis.supplementaryMaterial
-        }));
-      }
-
-      if (analysis.feedback && state.user) {
-        try {
-          await api.submitFeedback({
-            type: 'improvement',
-            content: analysis.feedback,
-          });
-        } catch (err) {
-          console.error('Submit feedback error:', err);
-        }
-      }
-    } catch (e) {
-      console.error("Analysis error:", e);
-    }
-  };
-
-  const handleCopywritingMessage = async (userInput: string) => {
-    const text = userInput || copywritingTopic;
-    if (!text.trim() || isCopywritingThinking) return;
-
-    const userMsg: Message = { role: 'user', text: text };
-    setState(prev => ({
-      ...prev,
-      isCopywritingChatMode: true,
-      copywritingMessages: [...prev.copywritingMessages, userMsg]
-    }));
-    setCopywritingTopic('');
-    setIsCopywritingThinking(true);
-
-    try {
-      const knowledgeContext = state.knowledgeBase
-        .filter(k => k.category === 'copywriting')
-        .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
-        .join('\n\n');
-
-      const copywritingRefContent = await getStepRefsContent('copywriting');
-
-      const chatMsgs: Array<{ role: 'user' | 'assistant'; content: string }> = [
-        { role: 'user', content: `【背景上下文】：
-个人背景：${state.interviewReport || "（暂无）"}
-企业背景：${state.infoReport || "（暂无）"}
-定位方案：${state.positioningReport || "（暂无）"}
-上传资料：${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}
-
-${copywritingRefContent ? `【参考文件 · 客户采访与选题提示词】：
-${copywritingRefContent}` : ''}
-
-【特别说明】：如果上述背景信息缺失，请通过对话引导用户提供相关的个人故事、业务亮点或创作意图。` },
-        ...state.copywritingMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.text })),
-        { role: 'user', content: text }
-      ];
-
-      const modelText = await deepseek.chat({
-        model: deepseek.MODELS.fast,
-        knowledge_id: ZHIPU_KNOWLEDGE_ID,
-        system: COPYWRITING_SYSTEM_PROMPT + "\n\n当前处于【思路整理阶段】。请通过对话形式帮用户整理思路，挖掘亮点。" + (knowledgeContext ? `
-
-请参考以下专业语料提升文案水准：
-${knowledgeContext}` : "") + "\n\n请务必学习并应用【背景上下文】中的所有资料，确保文案符合定位。如果思路已经非常清晰，请告知用户可以开始生成文案了。请保持专业且富有启发性。",
-        messages: chatMsgs,
-        onUsage: reportTokenUsage,
-      });
-      setState(prev => ({
-        ...prev,
-        copywritingMessages: [...prev.copywritingMessages, userMsg, { role: 'model', text: modelText }]
-      }));
-
-      // 异步分析
-      analyzeCopywritingInteraction(text, modelText);
-
-    } catch (error) {
-      console.error("Copywriting chat error:", error);
-    } finally {
-      setIsCopywritingThinking(false);
-    }
-  };
+  // 选题卡点击时直接调用 generateCopywriting(topic)，无需额外 effect
 
   const generateCopywriting = async (topicData?: { title: string; [key: string]: any } | string) => {
-    const topicTitle = typeof topicData === 'string' ? topicData : topicData?.title || copywritingTopic;
+    const topicTitle = typeof topicData === 'string' ? topicData : topicData?.title || '';
     const topicObj = typeof topicData === 'object' ? topicData : null;
 
     setIsGeneratingCopywriting(true);
     try {
-      const chatContext = state.copywritingMessages.map(m => `${m.role === 'user' ? '用户' : '顾问'}: ${m.text}`).join('\n');
-      
       const knowledgeContext = state.knowledgeBase
         .filter(k => k.category === 'copywriting')
         .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
@@ -3851,7 +3583,7 @@ ${knowledgeContext}` : "") + "\n\n请务必学习并应用【背景上下文】�
 
 【参考文件 · 客户采访与选题提示词 + 文案审核提示词】：
 ${copywritingRefContent}` : '')
-        + "\n\n请结合【个人背景】、【企业背景】、【定位方案】、【上传资料内容】和【对话上下文】中的所有细节，创作符合定位且具有高水准的文案。";
+        + "\n\n请结合【个人背景】、【企业背景】、【定位方案】和【上传资料内容】中的所有细节，创作符合定位且具有高水准的文案。";
 
       const cwText = await deepseek.generateText({
         model: deepseek.MODELS.fast,
@@ -3872,10 +3604,7 @@ ${topicObj ? `【选题详情】：
 - 状态：${topicObj.status || ''}
 
 ` : ''}【选题/主题】：
-${topicTitle || '基于对话整理的思路'}
-
-【对话上下文】：
-${chatContext || "（暂无对话）"}
+${topicTitle || '基于背景创作'}
 
 【定位方案】：
 ${state.positioningReport || "（暂无，请基于通用爆款逻辑创作）"}
