@@ -3621,9 +3621,17 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         onUsage: reportTokenUsage,
       });
 
+      console.log('[generateCopywriting] AI 返回内容长度:', cwText.length);
+      console.log('[generateCopywriting] AI 返回内容前 500 字符:', cwText.slice(0, 500));
+
       const data = parseJsonResponse(cwText) || {};
+      console.log('[generateCopywriting] 解析结果:', JSON.stringify(data).slice(0, 200));
+
       if (!data.titles && !data.content) {
-        throw new Error('AI 返回的内容格式不正确，未找到 titles 或 content 字段');
+        // 调试：输出完整的 AI 返回内容，帮助定位格式问题
+        console.error('[generateCopywriting] AI 返回内容格式异常，完整内容长度:', cwText.length);
+        console.error('[generateCopywriting] AI 返回内容前 1000 字符:', cwText.slice(0, 1000));
+        throw new Error('AI 返回的内容格式不正确，未找到 titles 或 content 字段（请查看控制台 [generateCopywriting] 日志）');
       }
       setState(prev => ({ 
         ...prev, 
@@ -3634,7 +3642,12 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         }
       }));
     } catch (error) {
-      console.error("Copywriting generation error:", error);
+      console.error("[generateCopywriting] 生成失败 - 完整错误:", error);
+      console.error("[generateCopywriting] 错误栈:", error?.stack);
+      if (cwText) {
+        console.error("[generateCopywriting] AI 原始返回内容长度:", cwText.length);
+        console.error("[generateCopywriting] AI 原始返回内容前 1000 字符:", cwText.slice(0, 1000));
+      }
       alert('文案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
     } finally {
       setIsGeneratingCopywriting(false);
@@ -3650,6 +3663,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
    * 处理：纯 JSON / Markdown 代码块包裹 / 前后有废话 / 被截断的 JSON
    */
   const parseJsonResponse = (aiResponse: string): any | null => {
+    console.log('[parseJson] 开始解析，内容长度:', aiResponse.length, '前200字符:', aiResponse.slice(0, 200));
     let parsed: any = null;
 
     // 策略1: 直接解析
