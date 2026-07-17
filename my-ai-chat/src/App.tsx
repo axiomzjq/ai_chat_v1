@@ -3621,7 +3621,10 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         onUsage: reportTokenUsage,
       });
 
-      const data = JSON.parse(cwText || '{}');
+      const data = parseJsonResponse(cwText) || {};
+      if (!data.titles && !data.content) {
+        throw new Error('AI 返回的内容格式不正确，未找到 titles 或 content 字段');
+      }
       setState(prev => ({ 
         ...prev, 
         copywritingOutput: {
@@ -3643,60 +3646,66 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
   // ============================================================
 
   /**
+   * 通用 JSON 解析器（4 层策略）
+   * 处理：纯 JSON / Markdown 代码块包裹 / 前后有废话 / 被截断的 JSON
+   */
+  const parseJsonResponse = (aiResponse: string): any | null => {
+    let parsed: any = null;
+
+    // 策略1: 直接解析
+    try {
+      parsed = JSON.parse(aiResponse);
+      console.log('[parseJson] 策略1 直接解析成功');
+      return parsed;
+    } catch (e: any) {
+      console.log('[parseJson] 策略1 失败:', e?.message || e);
+    }
+
+    // 策略2: 提取 Markdown 代码块中的 JSON
+    if (!parsed) {
+      try {
+        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          parsed = JSON.parse(codeBlockMatch[1]);
+          console.log('[parseJson] 策略2 代码块解析成功');
+          return parsed;
+        }
+        console.log('[parseJson] 策略2 未找到代码块');
+      } catch (e: any) {
+        console.log('[parseJson] 策略2 失败:', e?.message || e);
+      }
+    }
+
+    // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
+    if (!parsed) {
+      try {
+        const firstBrace = aiResponse.indexOf('{');
+        const lastBrace = aiResponse.lastIndexOf('}');
+        console.log('[parseJson] 策略3: firstBrace=', firstBrace, 'lastBrace=', lastBrace, 'responseLength=', aiResponse.length);
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          let jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
+          console.log('[parseJson] 策略3 提取的 JSON 长度:', jsonStr.length, '前100字符:', jsonStr.slice(0, 100));
+          jsonStr = repairTruncatedJson(jsonStr);
+          parsed = JSON.parse(jsonStr);
+          console.log('[parseJson] 策略3 解析成功');
+          return parsed;
+        }
+      } catch (e: any) {
+        console.log('[parseJson] 策略3 失败:', e?.message || e);
+      }
+    }
+
+    console.error('[parseJson] 所有策略都失败。AI 返回内容长度:', aiResponse.length, '前500字符:', aiResponse.slice(0, 500));
+    return null;
+  };
+
+  /**
    * 从 AI 返回的文本中提取并解析选题 JSON
    * 处理多种返回格式：纯 JSON、Markdown 包裹、前后有废话等
    */
   const parseTopicPool = (aiResponse: string): { stages: any[] } | null => {
-    let parsed: any = null;
-    const responseLength = aiResponse.length;
-
-    try {
-      // 策略1: 直接尝试解析（纯 JSON 情况）
-      parsed = JSON.parse(aiResponse);
-      console.log('[parseTopicPool] 策略1 直接解析成功, type:', Array.isArray(parsed) ? 'array' : 'object');
-    } catch (e: any) {
-      console.log('[parseTopicPool] 策略1 失败:', e?.message || e);
-      // 继续尝试其他策略
-    }
-
-    if (!parsed) {
-      try {
-        // 策略2: 提取 Markdown 代码块中的 JSON
-        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (codeBlockMatch) {
-          parsed = JSON.parse(codeBlockMatch[1]);
-          console.log('[parseTopicPool] 策略2 代码块解析成功');
-        } else {
-          console.log('[parseTopicPool] 策略2 未找到代码块');
-        }
-      } catch (e: any) {
-        console.log('[parseTopicPool] 策略2 失败:', e?.message || e);
-      }
-    }
-
-    if (!parsed) {
-      try {
-        // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
-        const firstBrace = aiResponse.indexOf('{');
-        const lastBrace = aiResponse.lastIndexOf('}');
-        console.log('[parseTopicPool] 策略3: firstBrace=', firstBrace, 'lastBrace=', lastBrace, 'responseLength=', responseLength);
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          let jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
-          console.log('[parseTopicPool] 策略3 提取的 JSON 长度:', jsonStr.length, '前100字符:', jsonStr.slice(0, 100));
-          // 尝试修复截断的 JSON
-          jsonStr = repairTruncatedJson(jsonStr);
-          parsed = JSON.parse(jsonStr);
-          console.log('[parseTopicPool] 策略3 解析成功');
-        }
-      } catch (e: any) {
-        console.log('[parseTopicPool] 策略3 失败:', e?.message || e);
-      }
-    }
-
-    if (!parsed) {
-      console.error('[parseTopicPool] 所有策略都失败。AI 返回内容长度:', responseLength, '前500字符:', aiResponse.slice(0, 500));
-      return null;
-    }
+    const parsed = parseJsonResponse(aiResponse);
+    if (!parsed) return null;
 
     // 归一化：支持两种格式
     // 格式A: { "stages": [...] } （期望格式）
