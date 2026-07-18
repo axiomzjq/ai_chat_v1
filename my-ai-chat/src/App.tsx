@@ -3588,6 +3588,7 @@ ${positioningFeedback}
     const topicObj = typeof topicData === 'object' ? topicData : null;
 
     setIsGeneratingCopywriting(true);
+    let cwText: string | undefined;
     try {
       const knowledgeContext = state.knowledgeBase
         .filter(k => k.category === 'copywriting')
@@ -3603,7 +3604,7 @@ ${positioningFeedback}
 ${copywritingRefContent}` : '')
         + "\n\n请结合【个人背景】、【企业背景】、【定位方案】和【上传资料内容】中的所有细节，创作符合定位且具有高水准的文案。";
 
-      const cwText = await deepseek.generateText({
+      cwText = await deepseek.generateText({
         model: deepseek.MODELS.fast,
         system: systemPrompt,
         prompt: `基于以下信息创作3个标题和1篇口播文案：
@@ -4144,54 +4145,36 @@ ${topicRefContent}` : '');
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 md:gap-3">
-          <div className="w-8 h-8 md:w-10 md:h-10 bg-black rounded-lg md:rounded-xl flex items-center justify-center">
-            <Sparkles className="text-white w-5 h-5 md:w-6 md:h-6" />
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-6 py-3 md:py-4">
+        <div className="flex items-center justify-between">
+          {/* 左侧 Logo */}
+          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-black rounded-lg md:rounded-xl flex items-center justify-center">
+              <Sparkles className="text-white w-5 h-5 md:w-6 md:h-6" />
+            </div>
+            <div>
+              <h1 className="text-sm md:text-lg font-bold tracking-tight">ToB创始人IP定制</h1>
+              <p className="text-[8px] md:text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Premium IP Customization</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm md:text-lg font-bold tracking-tight">ToB创始人IP定制</h1>
-            <p className="text-[8px] md:text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Premium IP Customization</p>
+
+          {/* 中间步骤导航（圆形指示器） */}
+          <div className="hidden md:flex flex-1 justify-center px-8">
+            <StepIndicator
+              currentStep={currentStep}
+              onStepClick={(step) => setCurrentStep(step)}
+              state={state}
+            />
           </div>
-        </div>
 
-        <nav className="hidden md:flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
-          {[
-            { id: 'interview', label: '访谈', icon: User },
-            { id: 'positioning', label: '定位', icon: Target },
-            { id: 'topic', label: '选题', icon: FileText },
-            { id: 'copywriting', label: '文案', icon: PenTool },
-            { id: 'history', label: '历史', icon: Database },
-          ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
-            return (
-              <button
-                key={step.id}
-                onClick={() => unlocked && setCurrentStep(step.id as Step)}
-                disabled={!unlocked}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all",
-                  currentStep === step.id
-                    ? "bg-white text-black shadow-sm"
-                    : unlocked
-                      ? "text-gray-400 hover:text-black"
-                      : "text-gray-300 cursor-not-allowed"
-                )}
-              >
-                <step.icon size={14} />
-                {step.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
-          <button 
-            onClick={() => setShowGuide(true)}
-            className="hover:text-black cursor-pointer transition-colors outline-none"
-          >
-            系统指南
-          </button>
+          {/* 右侧按钮 */}
+          <div className="hidden md:flex items-center gap-4 text-sm font-medium text-gray-500">
+            <button
+              onClick={() => setShowGuide(true)}
+              className="hover:text-black cursor-pointer transition-colors outline-none"
+            >
+              系统指南
+            </button>
           <button 
             onClick={() => setShowContact(true)}
             className="bg-black text-white px-5 py-2 rounded-full text-xs hover:bg-gray-800 transition-all shadow-lg shadow-black/10"
@@ -4231,6 +4214,7 @@ ${topicRefContent}` : '');
             <LogOut className="w-5 h-5" />
           </button>
         </div>
+        </div> {/* close outer flex wrapper */}
         <div className="md:hidden flex items-center gap-3">
           <button 
             onClick={() => setShowGuide(true)}
@@ -4627,12 +4611,6 @@ ${topicRefContent}` : '');
       )}
 
       <main className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
-        <StepIndicator
-          currentStep={currentStep}
-          onStepClick={(step) => setCurrentStep(step)}
-          state={state}
-        />
-
         <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl md:shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden min-h-[500px] md:min-h-[600px] flex flex-col">
           {renderStep()}
         </div>
