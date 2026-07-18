@@ -3621,26 +3621,35 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         onUsage: reportTokenUsage,
       });
 
-      console.log('[generateCopywriting] AI 返回内容长度:', cwText.length);
-      console.log('[generateCopywriting] AI 返回内容前 500 字符:', cwText.slice(0, 500));
+      console.log('[generateCopywriting] ✓ AI 请求成功，内容长度:', cwText.length);
 
-      const data = parseJsonResponse(cwText) || {};
-      console.log('[generateCopywriting] 解析结果:', JSON.stringify(data).slice(0, 200));
+      // 使用通用 JSON 解析器解析 AI 返回
+      let data: any;
+      try {
+        data = parseJsonResponse(cwText) || {};
+      } catch (parseErr: any) {
+        // parseJsonResponse 内部已记录详细日志，这里补充上下文
+        console.error('[generateCopywriting] parseJsonResponse 抛出异常:', parseErr?.message || parseErr);
+        throw new Error('AI 返回的内容无法解析为 JSON：' + (parseErr?.message || parseErr));
+      }
+      console.log('[generateCopywriting] ✓ 解析成功，data 类型:', typeof data, 'keys:', Object.keys(data));
 
       if (!data.titles && !data.content) {
-        // 调试：输出完整的 AI 返回内容，帮助定位格式问题
         console.error('[generateCopywriting] AI 返回内容格式异常，完整内容长度:', cwText.length);
         console.error('[generateCopywriting] AI 返回内容前 1000 字符:', cwText.slice(0, 1000));
         throw new Error('AI 返回的内容格式不正确，未找到 titles 或 content 字段（请查看控制台 [generateCopywriting] 日志）');
       }
-      setState(prev => ({ 
-        ...prev, 
+      console.log('[generateCopywriting] ✓ 字段验证通过，titles:', data.titles?.length, 'content:', data.content?.length);
+
+      setState(prev => ({
+        ...prev,
         copywritingOutput: {
           titles: data.titles || [],
           selectedTitleIndex: 0,
           content: data.content || ''
         }
       }));
+      console.log('[generateCopywriting] ✓ 状态已更新');
     } catch (error) {
       console.error("[generateCopywriting] 生成失败 - 完整错误:", error);
       console.error("[generateCopywriting] 错误栈:", error?.stack);
