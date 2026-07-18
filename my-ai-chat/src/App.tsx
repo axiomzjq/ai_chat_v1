@@ -313,6 +313,59 @@ const buildMaterialsContext = (materials: UploadedMaterial[], maxTotalChars = 12
 const BOT_AVATAR = "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=200&h=200";
 const USER_AVATAR = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=200&h=200";
 
+// --- Header Step Indicator (compact, no labels) ---
+function HeaderStepIndicator({ currentStep, onStepClick, state }: {
+  currentStep: Step;
+  onStepClick: (step: Step) => void;
+  state: AppState;
+}) {
+  const steps: { id: Step; label: string; icon: any }[] = [
+    { id: 'interview', label: '访谈', icon: MessageSquare },
+    { id: 'positioning', label: '定位', icon: Target },
+    { id: 'topic', label: '选题', icon: FileText },
+    { id: 'copywriting', label: '文案', icon: PenTool },
+    { id: 'history', label: '历史', icon: CheckCircle2 },
+  ];
+
+  return (
+    <div className="hidden lg:flex items-center gap-1.5">
+      {steps.map((step, index) => {
+        const Icon = step.icon;
+        const isActive = currentStep === step.id;
+        const isPast = steps.findIndex(s => s.id === currentStep) > index;
+        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
+
+        return (
+          <React.Fragment key={step.id}>
+            <button
+              onClick={() => unlocked && onStepClick(step.id)}
+              disabled={!unlocked}
+              title={step.label}
+              className={cn(
+                "relative w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200",
+                isActive ? "bg-black text-white shadow-md scale-110" :
+                isPast ? "bg-green-500 text-white" :
+                unlocked ? "bg-gray-200 text-gray-400 hover:bg-gray-300" : "bg-gray-100 text-gray-300 cursor-not-allowed"
+              )}
+            >
+              {isPast
+                ? <CheckCircle2 className="w-3 h-3" />
+                : <Icon className="w-3 h-3" />
+              }
+            </button>
+            {index < steps.length - 1 && (
+              <div className={cn(
+                "w-3 h-px transition-colors duration-300",
+                isPast ? "bg-green-500" : "bg-gray-200"
+              )} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 // --- Components ---
 
 function StepIndicator({ currentStep, onStepClick, state }: {
@@ -4145,7 +4198,7 @@ ${topicRefContent}` : '');
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-6 py-3 md:py-4">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-6 py-2 md:py-2.5">
         <div className="flex items-center justify-between">
           {/* 左侧 Logo */}
           <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
@@ -4158,9 +4211,9 @@ ${topicRefContent}` : '');
             </div>
           </div>
 
-          {/* 中间步骤导航（圆形指示器） */}
-          <div className="hidden md:flex flex-1 justify-center px-8">
-            <StepIndicator
+          {/* 中间步骤导航（紧凑圆点） */}
+          <div className="hidden lg:flex flex-1 justify-center">
+            <HeaderStepIndicator
               currentStep={currentStep}
               onStepClick={(step) => setCurrentStep(step)}
               state={state}
