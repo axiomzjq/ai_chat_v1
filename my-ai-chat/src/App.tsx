@@ -12,6 +12,8 @@ import {
   INFO_SYSTEM_PROMPT,
   POSITIONING_SYSTEM_PROMPT,
   COPYWRITING_SYSTEM_PROMPT,
+  COPYWRITING_GENERATE_SYSTEM_PROMPT,
+  TOPIC_SYSTEM_PROMPT,
 } from './lib/prompts';
 
 // 智谱知识库 ID（用于对话调用知识库进行 RAG 问答）
@@ -31,9 +33,6 @@ import {
   MessageSquare,
   LayoutDashboard,
   Video,
-  Volume2,
-  Mic,
-  MicOff,
   Copy,
   Download,
   Database,
@@ -75,15 +74,113 @@ import {
   FirebaseUser
 } from './firebase';
 
+// ============================================================
+// 参考文件加载工具
+// 从 public/refs/ 加载各步骤的参考 .txt 文件
+// ============================================================
+
+const REFS_BASE = '/refs';
+
+type StepRefs = {
+  interview: string[];
+  positioning: string[];
+  topic: string[];
+  copywriting: string[];
+};
+
+/** 各步骤需要加载的参考文件列表 */
+export const STEP_REFS: StepRefs = {
+  interview: ['interview/客户访谈参考手册.txt'],
+  positioning: [
+    'positioning/客户定位访谈参考手册.txt',
+    'positioning/写作技巧提示词_精华版.txt',
+  ],
+  topic: [
+    'topic/选题提示词_基于访谈结果.txt',
+    'topic/写作技巧提示词_精华版.txt',
+  ],
+  copywriting: [
+    'copywriting/客户采访与选题提示词.txt',
+    'copywriting/文案审核提示词.txt',
+  ],
+};
+
+/** 加载单个参考文件内容 */
+export async function loadRefFile(path: string): Promise<string> {
+  try {
+    const res = await fetch(`${REFS_BASE}/${path}`);
+    if (!res.ok) return '';
+    return await res.text();
+  } catch {
+    return '';
+  }
+}
+
+/** 加载指定步骤的所有参考文件，合并为一个字符串 */
+export async function loadStepRefs(step: keyof StepRefs): Promise<string> {
+  const files = STEP_REFS[step] || [];
+  const contents = await Promise.all(files.map(f => loadRefFile(f)));
+  return contents.filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
+}
+
+// ============================================================
+// 结果文件保存工具
+// ============================================================
+
+/** 触发浏览器下载文本文件 */
+export function downloadTextFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 保存结果到 localStorage（按用户隔离） */
+export function saveResultToStorage(key: string, data: any, userId?: string) {
+  try {
+    const scopedKey = userId ? `result_${key}_${userId}` : `result_${key}`;
+    localStorage.setItem(scopedKey, JSON.stringify({
+      data,
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // localStorage 满了
+  }
+}
+
+/** 从 localStorage 读取结果（按用户隔离） */
+export function loadResultFromStorage(key: string, userId?: string): any | null {
+  try {
+    const scopedKey = userId ? `result_${key}_${userId}` : `result_${key}`;
+    const saved = localStorage.getItem(scopedKey);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+/** 获取用户隔离的 localStorage key */
+export function getUserScopedKey(baseKey: string, userId: string): string {
+  return `${baseKey}_${userId}`;
+}
 
 // --- Types ---
 
-type Step = 'interview' | 'positioning' | 'copywriting' | 'history';
+type Step = 'interview' | 'information' | 'positioning' | 'topic' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-const isStepUnlocked = (stepId: Step, interviewReport: string) => {
+const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], positioningReport?: string, userRole?: 'user' | 'admin') => {
   if (stepId === 'interview' || stepId === 'history') return true;
-  return !!interviewReport;
+  if (userRole === 'admin') return true;
+  if (stepId === 'positioning') return !!interviewReport;
+  if (stepId === 'topic') return !!positioningReport; // 需要定位报告
+  if (stepId === 'copywriting') return !!topicPool.length; // 需要选题池
+  return false;
 };
 type View = 'login' | 'app' | 'admin';
 
@@ -120,8 +217,6 @@ interface HistoryItem {
   selectedPositioningIndex: number | null;
   positioningReport: string;
   // 文案阶段
-  copywritingMessages: Message[];
-  isCopywritingChatMode: boolean;
   copywritingOutput: {
     titles: string[];
     selectedTitleIndex: number | null;
@@ -145,13 +240,14 @@ interface AppState {
   positioningOptions: string[];
   selectedPositioningIndex: number | null;
   positioningReport: string;
+  topicPool: any[]; // 选题池
+  selectedTopic: any | null; // 选中的选题
+  topicGenerationStatus: 'idle' | 'generating' | 'completed' | 'demo_fallback'; // 选题生成状态
   copywritingOutput: {
     titles: string[];
     selectedTitleIndex: number | null;
     content: string;
   };
-  copywritingMessages: Message[];
-  isCopywritingChatMode: boolean;
   history: HistoryItem[];
   user: UserProfile | null;
   view: View;
@@ -163,24 +259,6 @@ interface AppState {
 
 // --- AI Service ---
 
-// TTS: 使用浏览器原生 SpeechSynthesis（智谱AI 无 TTS 能力）
-
-const playTTS = async (text: string, onStart?: () => void, onEnd?: () => void) => {
-  try {
-    onStart?.();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onEnd?.();
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  } catch (error) {
-    console.error("TTS Error:", error);
-    onEnd?.();
-  }
-};
 const organizeContentWithAI = async (rawText: string) => {
   if (!rawText.trim()) return "";
   try {
@@ -237,19 +315,18 @@ const USER_AVATAR = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe
 
 // --- Components ---
 
-function StepIndicator({ currentStep, onStepClick, state }: { 
-  currentStep: Step, 
+function StepIndicator({ currentStep, onStepClick, state }: {
+  currentStep: Step,
   onStepClick: (step: Step) => void,
-  state: AppState 
+  state: AppState
 }) {
   const steps: { id: Step; label: string; icon: any }[] = [
     { id: 'interview', label: '访谈', icon: MessageSquare },
     { id: 'positioning', label: '定位', icon: Target },
+    { id: 'topic', label: '选题', icon: FileText },
     { id: 'copywriting', label: '文案', icon: PenTool },
     { id: 'history', label: '历史', icon: CheckCircle2 },
   ];
-
-
 
   return (
     <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-8 md:mb-12 px-2 md:px-4 overflow-x-auto no-scrollbar py-2">
@@ -257,11 +334,11 @@ function StepIndicator({ currentStep, onStepClick, state }: {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
         const isPast = steps.findIndex(s => s.id === currentStep) > index;
-        const unlocked = isStepUnlocked(step.id, state.interviewReport);
+        const unlocked = isStepUnlocked(step.id, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
 
         return (
           <React.Fragment key={step.id}>
-            <button 
+            <button
               onClick={() => unlocked && onStepClick(step.id)}
               disabled={!unlocked}
               className={cn(
@@ -271,8 +348,8 @@ function StepIndicator({ currentStep, onStepClick, state }: {
             >
               <div className={cn(
                 "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2",
-                isActive ? "bg-black text-white border-black scale-110 shadow-lg" : 
-                isPast ? "bg-green-500 text-white border-green-500" : 
+                isActive ? "bg-black text-white border-black scale-110 shadow-lg" :
+                isPast ? "bg-green-500 text-white border-green-500" :
                 "bg-white text-gray-400 border-gray-200"
               )}>
                 {isPast ? <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" /> : <Icon className="w-5 h-5 md:w-6 md:h-6" />}
@@ -387,9 +464,10 @@ const CollapsibleMarkdown = ({ content }: { content: string }) => {
 
 const UI_STATE_KEY = 'ai_chat_ui_state';
 
-function loadUIState(): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
+function loadUIState(userId?: string): { currentStep: Step; isStarted: boolean; lastView: View | null; adminActiveTab: 'users' | 'feedback' | 'knowledge' } {
+  const key = userId ? getUserScopedKey(UI_STATE_KEY, userId) : UI_STATE_KEY;
   try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(UI_STATE_KEY) : null;
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
     if (raw) {
       const parsed = JSON.parse(raw);
       // 兼容旧版已移除的 information 步骤
@@ -409,13 +487,14 @@ const initialState: AppState = {
   positioningOptions: [],
   selectedPositioningIndex: null,
   positioningReport: '',
+  topicPool: [],
+  selectedTopic: null,
+  topicGenerationStatus: 'idle', // 'idle' | 'generating' | 'completed' | 'demo_fallback'
   copywritingOutput: {
     titles: [],
     selectedTitleIndex: null,
     content: '',
   },
-  copywritingMessages: [],
-  isCopywritingChatMode: false,
   history: [],
   user: null,
   view: 'login',
@@ -1487,7 +1566,32 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>(_uiState.currentStep);
+  const [topicStage, setTopicStage] = useState(1); // 当前选题阶段标签
+  const [selectedTopic, setSelectedTopic] = useState<any>(null); // 选中的选题
+  const [isGeneratingTopics, setIsGeneratingTopics] = useState(false); // 选题生成中
+
+  // 参考文件缓存（避免重复 fetch）
+  const refsCache = useRef<Record<string, string>>({});
+
+  /** 获取缓存的参考文件内容 */
+  const getRefContent = async (path: string): Promise<string> => {
+    if (refsCache.current[path]) return refsCache.current[path];
+    const content = await loadRefFile(path);
+    refsCache.current[path] = content;
+    return content;
+  };
+
+  /** 获取步骤的所有参考文件内容 */
+  const getStepRefsContent = async (step: keyof typeof STEP_REFS): Promise<string> => {
+    const files = STEP_REFS[step] || [];
+    const contents = await Promise.all(files.map(f => getRefContent(f)));
+    return contents.filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
+  };
+
   const [state, setState] = useState<AppState>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('founder_ip_history') : null;
     let parsedHistory: HistoryItem[] = [];
@@ -1505,21 +1609,56 @@ export default function App() {
     };
   });
 
-  useEffect(() => {
-    localStorage.setItem('founder_ip_history', JSON.stringify(state.history));
-  }, [state.history]);
+  // 加载用户隔离的本地数据
+  const loadUserLocalData = (userId: string) => {
+    // 对话历史
+    const history = loadResultFromStorage('founder_ip_history', userId) || [];
+    // 访谈结果
+    const interviewReport = loadResultFromStorage('interview_report', userId) || '';
+    // 企业信息报告
+    const infoReport = loadResultFromStorage('info_report', userId) || '';
+    // 定位报告
+    const positioningReport = loadResultFromStorage('positioning_report', userId) || '';
+    // 定位方案选项（多版）
+    const positioningOptions = loadResultFromStorage('positioning_options', userId) || [];
+    const selectedPositioningIndex = positioningOptions.length > 0 ? 0 : null;
+    // 选题池
+    const topicPool = loadResultFromStorage('topic_pool', userId) || [];
 
-  // UI 状态持久化：刷新后记住页面位置
+    setState(prev => ({
+      ...prev,
+      history,
+      interviewReport,
+      infoReport,
+      positioningReport,
+      positioningOptions,
+      selectedPositioningIndex,
+      topicPool,
+      topicGenerationStatus: topicPool.length > 0 ? 'completed' : 'idle',
+    }));
+  };
+
+  // 保存对话历史（按用户隔离）
   useEffect(() => {
-    const raw = localStorage.getItem(UI_STATE_KEY);
+    const userId = state.user?.uid;
+    if (!userId) return;
+    const key = getUserScopedKey('founder_ip_history', userId);
+    localStorage.setItem(key, JSON.stringify(state.history));
+  }, [state.history, state.user?.uid]);
+
+  // UI 状态持久化（按用户隔离）
+  useEffect(() => {
+    const userId = state.user?.uid;
+    const key = userId ? getUserScopedKey(UI_STATE_KEY, userId) : UI_STATE_KEY;
+    const raw = localStorage.getItem(key);
     const saved = raw ? JSON.parse(raw) : {};
-    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+    localStorage.setItem(key, JSON.stringify({
       ...saved,
       currentStep,
       isStarted,
       lastView: state.view === 'login' ? saved.lastView : state.view,
     }));
-  }, [currentStep, isStarted, state.view]);
+  }, [currentStep, isStarted, state.view, state.user?.uid]);
 
   // Auth State
   useEffect(() => {
@@ -1553,6 +1692,8 @@ export default function App() {
                 user: profile,
                 view: targetView,
               }));
+              // 加载该用户的本地数据（替换之前的共享数据）
+              loadUserLocalData(profile.uid);
             }
           }
         } catch (err) {
@@ -1611,17 +1752,22 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      const currentUserId = state.user?.uid;
       await signOut(auth);
-      // 登出时清除认证缓存和页面位置
+      // 登出时清除认证缓存和该用户的本地数据
       localStorage.removeItem('authing_access_token');
       localStorage.removeItem('firebase_user_cache');
-      const raw = localStorage.getItem(UI_STATE_KEY);
-      if (raw) {
-        try {
-          const saved = JSON.parse(raw);
-          saved.lastView = null;
-          localStorage.setItem(UI_STATE_KEY, JSON.stringify(saved));
-        } catch { /* ignore */ }
+      // 清除该用户的 localStorage 数据
+      if (currentUserId) {
+        const keysToRemove = [
+          getUserScopedKey('founder_ip_history', currentUserId),
+          getUserScopedKey(UI_STATE_KEY, currentUserId),
+          getUserScopedKey('result_interview_report', currentUserId),
+          getUserScopedKey('result_info_report', currentUserId),
+          getUserScopedKey('result_positioning_report', currentUserId),
+          getUserScopedKey('result_topic_pool', currentUserId),
+        ];
+        keysToRemove.forEach(key => localStorage.removeItem(key));
       }
       setState(initialState);
       setCurrentStep('interview');
@@ -1670,7 +1816,7 @@ export default function App() {
 
   const resetAllData = () => {
     try {
-      const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content || state.copywritingMessages.length > 0;
+      const hasAnyData = messages.length > 1 || state.interviewReport || state.infoReport || state.positioningReport || state.copywritingOutput.content;
       const confirmMsg = hasAnyData
         ? '确定要清空当前会话并保存到历史记录吗？\n\n当前对话和生成内容将保存到历史，然后重新开始。'
         : '确定要清空所有用户数据吗？\n\n这将删除所有访谈对话记录、报告、文案和上传资料。\n\n此操作不可恢复。';
@@ -1700,8 +1846,6 @@ export default function App() {
           positioningOptions: state.positioningOptions,
           selectedPositioningIndex: state.selectedPositioningIndex,
           positioningReport: state.positioningReport,
-          copywritingMessages: state.copywritingMessages,
-          isCopywritingChatMode: state.isCopywritingChatMode,
           copywritingOutput: { ...state.copywritingOutput },
           uploadedMaterials: [...state.uploadedMaterials],
         };
@@ -1724,8 +1868,6 @@ export default function App() {
         selectedPositioningIndex: null,
         positioningReport: '',
         copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
-        copywritingMessages: [],
-        isCopywritingChatMode: false,
         uploadedMaterials: [],
       }));
       alert(hasAnyData ? '✅ 当前会话已保存到历史记录，重新开始。' : '✅ 所有数据已清空，重新开始。');
@@ -1733,6 +1875,36 @@ export default function App() {
       console.error('[resetAllData] 清空记录失败:', error);
       alert('清空记录失败: ' + (error.message || '未知错误'));
     }
+  };
+
+  /** 清除当前用户的 localStorage 数据（调试用） */
+  const clearUserLocalData = () => {
+    const userId = state.user?.uid;
+    if (!userId) {
+      alert('未检测到登录用户，无法清除本地数据。');
+      return;
+    }
+    const confirmed = window.confirm(
+      `确定清除当前用户（${state.user?.phone || state.user?.email || userId}）的本地缓存吗？\n\n这将删除：\n- 对话历史\n- 访谈结果\n- 定位报告\n- 选题池\n- UI 状态\n\n后端数据库数据不受影响。`
+    );
+    if (!confirmed) return;
+
+    const keysToRemove = [
+      getUserScopedKey('founder_ip_history', userId),
+      getUserScopedKey(UI_STATE_KEY, userId),
+      getUserScopedKey('result_interview_report', userId),
+      getUserScopedKey('result_info_report', userId),
+      getUserScopedKey('result_positioning_report', userId),
+      getUserScopedKey('result_topic_pool', userId),
+    ];
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+
+    // 同时清除 auth token 缓存
+    localStorage.removeItem('authing_access_token');
+    localStorage.removeItem('firebase_user_cache');
+
+    alert('✅ 本地缓存已清除，页面将重新加载。');
+    window.location.reload();
   };
 
   const generateHistoryTitle = (): string => {
@@ -1771,8 +1943,6 @@ export default function App() {
       positioningOptions: state.positioningOptions,
       selectedPositioningIndex: state.selectedPositioningIndex,
       positioningReport: state.positioningReport,
-      copywritingMessages: state.copywritingMessages,
-      isCopywritingChatMode: state.isCopywritingChatMode,
       copywritingOutput: { ...state.copywritingOutput },
       uploadedMaterials: [...state.uploadedMaterials],
     };
@@ -1929,10 +2099,11 @@ export default function App() {
             setState(prev => ({
               ...prev,
               interviewReport: data.interview_data?.report || prev.interviewReport,
-              infoReport: typeof data.information_report === 'string' ? data.information_report : prev.infoReport,
-              positioningReport: typeof data.positioning_report === 'string' ? data.positioning_report : '',
+              infoReport: typeof data.information_report === 'string' && data.information_report ? data.information_report : prev.infoReport,
+              positioningReport: typeof data.positioning_report === 'string' && data.positioning_report ? data.positioning_report : prev.positioningReport,
+              positioningOptions: Array.isArray(data.positioning_options) && data.positioning_options.length > 0 ? data.positioning_options : prev.positioningOptions,
+              topicPool: Array.isArray(data.topic_pool) && data.topic_pool.length > 0 ? data.topic_pool : prev.topicPool,
               copywritingOutput: data.copywriting_data?.output || prev.copywritingOutput,
-              copywritingMessages: data.copywriting_data?.messages || prev.copywritingMessages,
             }));
           }
         } catch (error) {
@@ -1955,9 +2126,10 @@ export default function App() {
             },
             information_report: state.infoReport,
             positioning_report: state.positioningReport,
+            positioning_options: state.positioningOptions,
+            topic_pool: state.topicPool,
             copywriting_data: {
               output: state.copywritingOutput,
-              messages: state.copywritingMessages,
             },
           });
         } catch (error) {
@@ -1975,8 +2147,9 @@ export default function App() {
     state.interviewReport,
     state.infoReport,
     state.positioningReport,
+    state.positioningOptions,
+    state.topicPool,
     state.copywritingOutput,
-    state.copywritingMessages,
     state.uploadedMaterials
   ]);
   const [input, setInput] = useState('');
@@ -2058,6 +2231,7 @@ ${relevantKnowledge}`,
 
       // 标记完成
       setState(prev => ({ ...prev, interviewReport: fullReport + '\n\n<!-- REPORT_COMPLETE -->' }));
+      saveResultToStorage('interview_report', fullReport, state.user?.uid);
       setReportProgress('');
     } catch (error: any) {
       console.error("Detailed report error:", error);
@@ -2101,65 +2275,6 @@ ${relevantKnowledge}`,
       a.download = filename.endsWith('.doc') ? filename : filename + '.doc';
       a.click();
       URL.revokeObjectURL(url);
-    }
-  };
-  const [isListening, setIsListening] = useState(false);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const finalTranscriptRef = useRef('');
-
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'zh-CN';
-
-      recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = '';
-        let latestFinal = '';
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            latestFinal += result[0].transcript;
-          } else {
-            interimTranscript += result[0].transcript;
-          }
-        }
-        if (latestFinal) {
-          finalTranscriptRef.current += latestFinal;
-        }
-        const displayText = finalTranscriptRef.current + interimTranscript;
-        if (currentStep === 'interview') {
-          setInput(displayText);
-        } else if (currentStep === 'positioning') {
-          setPositioningFeedback(displayText);
-        }
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-    }
-  }, [currentStep]);
-
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-    } else {
-      try {
-        finalTranscriptRef.current = '';
-        recognitionRef.current?.start();
-        setIsListening(true);
-      } catch (error) {
-        console.error('Failed to start recognition:', error);
-      }
     }
   };
 
@@ -2278,7 +2393,7 @@ ${relevantKnowledge}`,
               </div>
               <button
                 onClick={() => {
-                  if (isStepUnlocked('positioning', state.interviewReport)) {
+                  if (isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.positioningReport, state.user?.role)) {
                     setCurrentStep('positioning');
                   } else {
                     alert('请先完成访谈并生成深度报告');
@@ -2286,7 +2401,7 @@ ${relevantKnowledge}`,
                 }}
                 className={cn(
                   "flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold transition-all",
-                  isStepUnlocked('positioning', state.interviewReport)
+                  isStepUnlocked('positioning', state.interviewReport, state.topicPool, state.positioningReport, state.user?.role)
                     ? "text-black hover:gap-2 md:hover:gap-3"
                     : "text-gray-300 cursor-not-allowed"
                 )}
@@ -2323,22 +2438,11 @@ ${relevantKnowledge}`,
                       "max-w-[75%] md:max-w-[70%] p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm leading-relaxed relative",
                       m.role === 'user' ? "bg-black text-white rounded-tr-none shadow-lg" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm"
                     )}>
-                      {m.role === 'model' && (
-                        <button
-                          onClick={() => handlePlayVoice(m.text, i)}
-                          className={cn(
-                            "absolute -right-8 top-0 p-1.5 rounded-full transition-all",
-                            playingIndex === i ? "bg-black text-white animate-pulse" : "bg-gray-100 text-gray-400 hover:text-black opacity-0 group-hover:opacity-100"
-                          )}
-                        >
-                          {playingIndex === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
-                        </button>
-                      )}
                       <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed">
                         <ReactMarkdown>
                           {m.text}
                         </ReactMarkdown>
-                        {isLastModel && (
+                        {m.role === 'model' && isLastModel && (
                           <span className="inline-flex items-center gap-[3px] ml-1 h-5">
                             <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
                             <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
@@ -2425,17 +2529,7 @@ ${relevantKnowledge}`,
                     placeholder="输入您的回答..."
                     className="w-full bg-white border border-gray-200 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 pr-12 md:pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all shadow-sm text-sm"
                   />
-                  <button 
-                    onClick={toggleListening}
-                    className={cn(
-                      "absolute right-12 md:right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all",
-                      isListening ? "text-red-500 bg-red-50 animate-pulse" : "text-gray-400 hover:text-black"
-                    )}
-                    title={isListening ? "正在倾听..." : "语音输入"}
-                  >
-                    {isListening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
-                  </button>
-                  <button 
+                  <button
                     onClick={handleSendMessage}
                     disabled={isTyping || !input.trim()}
                     className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 p-2 bg-black text-white rounded-lg md:rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all shadow-md"
@@ -2445,15 +2539,9 @@ ${relevantKnowledge}`,
                 </div>
                 {!state.interviewReport && !isGeneratingDetailedReport && messages.length > 1 && (
                   <div className="flex flex-col gap-2">
-                    {!canEndInterview() ? (
-                      <p className="text-[10px] md:text-xs text-gray-400 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，至少完成 15 轮或等待 AI 结束提示后方可生成报告
-                      </p>
-                    ) : (
-                      <p className="text-[10px] md:text-xs text-amber-600 font-medium">
-                        💡 已进行 {Math.floor((messages.length - 1) / 2)} 轮对话，可以生成深度报告了
-                      </p>
-                    )}
+                    <p className="text-[10px] md:text-xs text-gray-400 font-medium">
+                      💡 等待 AI 顾问完成访谈后，可生成深度报告
+                    </p>
                     <button
                       onClick={() => generateDetailedInterviewReport()}
                       disabled={!canEndInterview()}
@@ -2586,19 +2674,13 @@ ${relevantKnowledge}`,
                   <p className="text-gray-500 text-xs md:text-sm leading-relaxed">
                     定位顾问将为您生成三版不同的IP定位方案，您可以根据自己的喜好进行选择和微调。
                   </p>
-                  <button 
+                  <button
                     onClick={generatePositioningReport}
                     disabled={isGeneratingPositioning}
                     className="w-full bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 disabled:bg-gray-200 text-sm"
                   >
                     {isGeneratingPositioning ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
                     生成三版定位方案
-                  </button>
-                  <button 
-                    onClick={() => setCurrentStep('copywriting')}
-                    className="w-full text-gray-400 hover:text-black transition-colors text-xs font-bold py-2"
-                  >
-                    跳过此步，直接进入文案创作
                   </button>
                 </div>
               )}
@@ -2608,27 +2690,28 @@ ${relevantKnowledge}`,
                   {/* Tab Navigation - Three Windows Switcher */}
                   <div className="flex items-center gap-3 p-2 bg-gray-100/50 rounded-[24px] w-fit mx-auto border border-gray-200/50 backdrop-blur-sm">
                     {state.positioningOptions.map((opt, idx) => {
-                      // Try to find the title for this option from the header or the "方案名称" field
-                      const headerMatch = opt.match(/###\s+(定位分析|定位方案\s+(\d+)[:：]\s*(.*))/);
-                      let title = "";
-                      
-                      const numMap: Record<string, string> = {
-                        '1': '一',
-                        '2': '二',
-                        '3': '三'
-                      };
+                      // 第一个标签固定显示"总结"，其余从内容中提取标题
+                      let title = idx === 0 ? '总结' : '';
 
-                      if (headerMatch) {
-                        if (headerMatch[1] === "定位分析") {
-                          title = "定位分析";
+                      if (idx > 0) {
+                        const headerMatch = opt.match(/###\s+(定位分析|定位方案\s+(\d+)[:：]\s*(.*))/);
+                        const numMap: Record<string, string> = {
+                          '1': '一',
+                          '2': '二',
+                          '3': '三'
+                        };
+
+                        if (headerMatch) {
+                          if (headerMatch[1] === "定位分析") {
+                            title = "定位分析";
+                          } else {
+                            const optionIndex = headerMatch[2] || "";
+                            title = `方案${numMap[optionIndex] || optionIndex}`;
+                          }
                         } else {
-                          // It's a "定位方案 X: [方案名称]"
-                          const optionIndex = headerMatch[2] || "";
-                          title = `方案${numMap[optionIndex] || optionIndex}`;
+                          const fieldMatch = opt.match(/方案名称[：:](.*)/);
+                          title = (fieldMatch ? fieldMatch[1].trim() : `方案 ${idx}`).split('\n')[0];
                         }
-                      } else {
-                        const fieldMatch = opt.match(/方案名称[：:](.*)/);
-                        title = (fieldMatch ? fieldMatch[1].trim() : `方案 ${idx}`).split('\n')[0];
                       }
                       
                       return (
@@ -2744,12 +2827,12 @@ ${relevantKnowledge}`,
 
                         <div className="bg-black p-8 rounded-[32px] text-white shadow-2xl space-y-6">
                           <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Next Step</h4>
-                          <h3 className="text-xl font-bold leading-tight">方案已确认？<br/>立即开始文案创作</h3>
+                          <h3 className="text-xl font-bold leading-tight">方案已确认？<br/>立即开始选题规划</h3>
                           <button
-                            onClick={() => setCurrentStep('copywriting')}
+                            onClick={() => setCurrentStep('topic')}
                             className="w-full py-4 bg-white text-black rounded-2xl text-xs font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
                           >
-                            进入文案顾问 <ArrowRight size={14} />
+                            进入选题顾问 <ArrowRight size={14} />
                           </button>
                         </div>
                       </div>
@@ -2760,10 +2843,61 @@ ${relevantKnowledge}`,
             </div>
           </div>
         );
-      case 'copywriting':
+      case 'topic': {
+        // 选题阶段
+        const hasTopicPool = state.topicPool.length > 0;
+        const isEmpty = !hasTopicPool && state.topicGenerationStatus === 'idle';
+        const isLoading = state.topicGenerationStatus === 'generating';
+        const isDemoFallback = state.topicGenerationStatus === 'demo_fallback';
+
+        // 选题池为空且未生成过：显示空状态
+        if (isEmpty) {
+          return (
+            <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
+              <div className="max-w-md w-full text-center space-y-6">
+                <div className="w-20 h-20 mx-auto bg-gray-50 rounded-full flex items-center justify-center">
+                  <FileText size={32} className="text-gray-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-bold text-black mb-2">尚未生成选题池</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    选题池基于您的定位报告生成，包含 4 个阶段的详细选题规划。
+                    <br/>请先完成定位，然后点击下方按钮生成选题。
+                  </p>
+                </div>
+                <button
+                  onClick={generateTopicPool}
+                  disabled={isLoading}
+                  className="w-full py-4 bg-black text-white rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  {isLoading ? '生成中...' : '生成选题池'}
+                </button>
+                <p className="text-[10px] text-gray-400">
+                  需要先完成定位并生成定位报告
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        // 生成中：显示加载状态
+        if (isLoading) {
+          return (
+            <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
+              <Loader2 size={40} className="animate-spin text-black mb-4" />
+              <p className="text-sm text-gray-500">AI 正在为您生成选题规划池...</p>
+            </div>
+          );
+        }
+
+        // 有数据：使用真实数据
+        const displayStages = hasTopicPool ? state.topicPool : getDemoTopicPool();
+        const currentStageData = displayStages.find((s: any) => s.stage === topicStage) || displayStages[0];
+
         return (
           <div className="flex-1 flex flex-col p-4 md:p-8">
-            <div className="flex items-center justify-between mb-6 md:mb-8">
+            <div className="flex items-center justify-between mb-4">
               <button onClick={() => setCurrentStep('positioning')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
                 <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
               </button>
@@ -2771,161 +2905,184 @@ ${relevantKnowledge}`,
                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
                   <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
-                <h2 className="text-base md:text-xl font-bold">文案顾问：内容创作</h2>
+                <h2 className="text-base md:text-xl font-bold">选题顾问：内容规划</h2>
               </div>
               <div className="w-10 md:w-20" />
             </div>
 
-            {!state.copywritingOutput.content ? (
-              state.isCopywritingChatMode ? (
-                <div className="flex-1 flex flex-col bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden mb-4 min-h-[500px]">
-                  <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">思路整理中...</span>
-                    </div>
-                    <button 
-                      onClick={() => generateCopywriting()}
-                      disabled={isGeneratingCopywriting}
-                      className="px-4 py-2 bg-black text-white rounded-full text-xs font-bold hover:bg-gray-800 transition-all flex items-center gap-2"
-                    >
-                      {isGeneratingCopywriting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      生成最终文案
-                    </button>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                    {state.copywritingMessages.map((msg, idx) => {
-                      const isLastModel = msg.role === 'model' && isCopywritingThinking && idx === state.copywritingMessages.length - 1;
-                      return (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className={cn("flex gap-3 md:gap-4", msg.role === 'user' ? "flex-row-reverse" : "")}
-                        >
-                          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-100 shadow-sm">
-                            <img src={msg.role === 'user' ? USER_AVATAR : BOT_AVATAR} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </div>
-                          <div className={cn(
-                            "max-w-[85%] md:max-w-[70%] p-3 md:p-4 rounded-2xl text-sm md:text-base shadow-sm",
-                            msg.role === 'user' ? "bg-black text-white rounded-tr-none" : "bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100"
-                          )}>
-                            <div className="markdown-body prose prose-sm max-w-none prose-inherit">
-                              <ReactMarkdown>{msg.text}</ReactMarkdown>
-                              {isLastModel && (
-                                <span className="inline-flex items-center gap-[3px] ml-1 h-5">
-                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0s' }} />
-                                  <span className="inline-block w-[3px] h-[10px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.2s' }} />
-                                  <span className="inline-block w-[3px] h-[6px] bg-gray-400 rounded-sm" style={{ animation: 'typing-bounce 1s ease-in-out infinite', animationDelay: '0.4s' }} />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                    <div ref={copywritingEndRef} />
-                  </div>
+            {/* 阶段标签页 + 阶段简介整合 - 文件夹样式 */}
+            <div className="mb-6">
+              {/* 阶段标签页 - 像文件夹标签 */}
+              <div className="flex items-end gap-1">
+                {displayStages.map((stage: any) => (
+                  <button
+                    key={stage.stage}
+                    onClick={() => setTopicStage(stage.stage)}
+                    className={cn(
+                      "px-4 py-2.5 rounded-t-lg text-xs font-bold whitespace-nowrap transition-all border-b-2",
+                      topicStage === stage.stage
+                        ? "bg-white text-black border-black -mb-px z-10 shadow-sm"
+                        : "bg-gray-100 text-gray-400 border-transparent hover:text-black hover:bg-gray-50"
+                    )}
+                  >
+                    阶段{['一', '二', '三', '四'][stage.stage - 1]}
+                  </button>
+                ))}
+              </div>
 
-                  <div className="p-4 border-t border-gray-50 bg-white">
-                    <div className="relative group max-w-4xl mx-auto w-full">
-                      <input 
-                        type="text"
-                        value={copywritingTopic}
-                        onChange={(e) => setCopywritingTopic(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCopywritingMessage(copywritingTopic)}
-                        placeholder="继续完善您的想法..."
-                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm shadow-sm"
-                      />
-                      <button 
-                        onClick={() => handleCopywritingMessage(copywritingTopic)}
-                        disabled={isCopywritingThinking || !copywritingTopic.trim()}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all"
-                      >
-                        <Send size={18} />
-                      </button>
+              {/* 阶段简介 - 像翻页内容 */}
+              <div className="bg-white border border-gray-200 rounded-b-lg rounded-tr-lg p-5 space-y-3 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-gray-900 mb-2">
+                      阶段{['一', '二', '三', '四'][currentStageData.stage - 1]}｜{currentStageData.name}
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-3">{currentStageData.goal}</p>
+                    <div className="space-y-1.5 text-xs text-gray-600">
+                      <p><span className="font-bold">核心任务：</span>{currentStageData.coreTask}</p>
+                      <p><span className="font-bold">推荐平台：</span>{currentStageData.platform}</p>
+                      <p><span className="font-bold">推荐风格：</span>{currentStageData.style}</p>
+                      <p><span className="font-bold">方向判断：</span>{currentStageData.direction}</p>
+                      <p><span className="font-bold">不建议：</span>{currentStageData.notRecommended}</p>
+                      <p><span className="font-bold">下一步：</span>{currentStageData.nextAction}</p>
                     </div>
+                  </div>
+                  <div className="text-right text-xs text-gray-400 ml-4">
+                    <p>{currentStageData.topics.length} 条选题</p>
+                    <p>{currentStageData.topics.filter(t => t.priority === 'P0').length} 条 P0</p>
                   </div>
                 </div>
-              ) : (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full space-y-8 text-center"
-                >
-                  <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full overflow-hidden flex items-center justify-center shadow-inner border border-gray-100">
-                    <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover opacity-80" referrerPolicy="no-referrer" />
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <h3 className="text-2xl md:text-3xl font-bold">准备好开始创作了吗？</h3>
-                    <p className="text-gray-400 text-sm md:text-base px-4">
-                      请从 Agent 2 规划的选题库中挑选一个主题，或者输入你今天想分享的任何想法。
-                    </p>
-                  </div>
+              </div>
+            </div>
 
-                  <div className="w-full relative group max-w-lg">
-                    <input 
-                      type="text"
-                      value={copywritingTopic}
-                      onChange={(e) => setCopywritingTopic(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleCopywritingMessage(copywritingTopic)}
-                      placeholder="输入选题或主题..."
-                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-5 px-6 pr-16 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm shadow-sm"
-                    />
-                    <button 
-                      onClick={() => handleCopywritingMessage(copywritingTopic)}
-                      disabled={isCopywritingThinking || !copywritingTopic.trim()}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-200 transition-all shadow-lg"
-                    >
-                      <Sparkles size={20} />
+            {/* 选题列表 - 压缩高度 */}
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {currentStageData.topics.map((topic) => (
+                <div
+                  key={topic.id}
+                  onClick={() => {
+                    setSelectedTopic(topic);
+                    setState(prev => ({ ...prev, selectedTopic: topic }));
+                    setCurrentStep('copywriting');
+                    // 选中选题后直接生成文案
+                    generateCopywriting(topic);
+                  }}
+                  className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-xs font-mono text-gray-400">{topic.id}</span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[11px] font-bold",
+                          topic.priority === 'P0' ? "bg-red-100 text-red-600" :
+                          topic.priority === 'P1' ? "bg-amber-100 text-amber-600" :
+                          "bg-gray-100 text-gray-600"
+                        )}>
+                          {topic.priority}
+                        </span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[11px] font-bold",
+                          topic.status === 'approved' ? "bg-green-100 text-green-600" :
+                          topic.status === 'planned' ? "bg-blue-100 text-blue-600" :
+                          "bg-gray-100 text-gray-600"
+                        )}>
+                          {topic.status === 'approved' ? '已批准' : topic.status === 'planned' ? '计划中' : '已使用'}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">{topic.title}</h4>
+                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold">爆款：</span>
+                          <span>{topic.hookType}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold">钩子：</span>
+                          <span className="line-clamp-1">{topic.hook3s}</span>
+                        </span>
+                        <span className="text-gray-400">|</span>
+                        <span>{topic.platform}</span>
+                      </div>
+                    </div>
+                    <button className="px-3 py-1.5 bg-black text-white rounded-lg text-[11px] font-bold hover:bg-gray-800 transition-all whitespace-nowrap">
+                      生成文案
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
 
-                  <div className="w-full space-y-4">
-                    {state.positioningReport && state.positioningReport.match(/选题[：:](.*)/g) && (
-                      <>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">推荐选题 (来自定位方案)</p>
-                        <div className="flex flex-wrap justify-center gap-2">
-                          {state.positioningReport.match(/选题[：:](.*)/g)?.slice(0, 5).map((t, i) => {
-                            const title = t.replace(/选题[：:]\s*/, '').trim();
-                            return (
-                              <button 
-                                key={i}
-                                onClick={() => {
-                                  setCopywritingTopic(title);
-                                  generateCopywriting(title);
-                                }}
-                                className="px-4 py-2 bg-white border border-gray-100 rounded-full text-xs text-gray-500 hover:border-black hover:text-black transition-all shadow-sm"
-                              >
-                                {title}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            ) : (
+            {/* 操作按钮 */}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={generateTopicPool}
+                disabled={isGeneratingTopics}
+                className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles size={14} className="inline mr-1" />
+                {isGeneratingTopics ? '生成中...' : state.topicGenerationStatus === 'demo_fallback' ? '重新生成' : '生成选题池'}
+              </button>
+              <button
+                onClick={() => {
+                  if (state.topicPool.length > 0) {
+                    setCurrentStep('copywriting');
+                  } else {
+                    alert('请先生成选题池');
+                  }
+                }}
+                className="px-4 py-2.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all text-xs"
+              >
+                进入文案
+              </button>
+            </div>
+          </div>
+        );
+      }
+      case 'copywriting':
+        return (
+          <div className="flex-1 flex flex-col p-4 md:p-8">
+            <div className="flex items-center justify-between mb-6 md:mb-8">
+              <button onClick={() => setCurrentStep('topic')} className="text-gray-400 hover:text-black flex items-center gap-1 md:gap-2 text-xs md:text-sm transition-colors">
+                <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> 返回
+              </button>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
+                  <img src={BOT_AVATAR} alt="Consultant" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <h2 className="text-base md:text-xl font-bold">文案创作</h2>
+              </div>
+              <div className="w-10 md:w-20" />
+            </div>
+
+            {/* 生成中：显示加载状态 */}
+            {isGeneratingCopywriting && !state.copywritingOutput.content && (
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+                <Loader2 className="w-10 h-10 animate-spin text-black" />
+                <p className="text-sm text-gray-500 font-medium">AI 正在为您创作文案，请稍候...</p>
+                {state.selectedTopic && (
+                  <p className="text-xs text-gray-400">选题：{state.selectedTopic.title}</p>
+                )}
+              </div>
+            )}
+
+            {/* 文案结果 */}
+            {state.copywritingOutput.content && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-4">备选标题</h4>
                     <div className="flex flex-col gap-2">
                       {state.copywritingOutput.titles.map((title, idx) => (
-                        <button 
+                        <button
                           key={idx}
-                          onClick={() => setState(prev => ({ 
-                            ...prev, 
-                            copywritingOutput: { ...prev.copywritingOutput, selectedTitleIndex: idx } 
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            copywritingOutput: { ...prev.copywritingOutput, selectedTitleIndex: idx }
                           }))}
                           className={cn(
                             "p-4 rounded-xl text-left text-sm transition-all border",
-                            state.copywritingOutput.selectedTitleIndex === idx 
-                              ? "bg-black text-white border-black shadow-lg shadow-black/10" 
+                            state.copywritingOutput.selectedTitleIndex === idx
+                              ? "bg-black text-white border-black shadow-lg shadow-black/10"
                               : "bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-200"
                           )}
                         >
@@ -2941,7 +3098,7 @@ ${relevantKnowledge}`,
                   <div className="bg-gray-50 rounded-2xl md:rounded-3xl p-4 md:p-8 border border-gray-100 overflow-y-auto max-h-[400px] md:max-h-[600px]">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">口播脚本</span>
-                      <button 
+                      <button
                         onClick={() => handleCopy(state.copywritingOutput.content, 'copywriting')}
                         className="text-xs text-gray-400 hover:text-black transition-colors flex items-center gap-1"
                       >
@@ -2965,20 +3122,18 @@ ${relevantKnowledge}`,
                     </ul>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <button 
+                    <button
                       onClick={() => {
                         setState(prev => ({
                           ...prev,
                           copywritingOutput: { titles: [], selectedTitleIndex: null, content: '' },
-                          isCopywritingChatMode: false,
-                          copywritingMessages: []
                         }));
                       }}
                       className="w-full bg-gray-50 text-gray-600 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-100 transition-all text-sm"
                     >
                       <ArrowLeft size={16} /> 重新选择选题
                     </button>
-                    <button 
+                    <button
                       onClick={addToHistory}
                       className="w-full bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all shadow-xl shadow-black/10 text-sm"
                     >
@@ -3088,8 +3243,6 @@ ${relevantKnowledge}`,
                               positioningOptions: item.positioningOptions || [],
                               selectedPositioningIndex: item.selectedPositioningIndex ?? null,
                               positioningReport: item.positioningReport || '',
-                              copywritingMessages: item.copywritingMessages || [],
-                              isCopywritingChatMode: item.isCopywritingChatMode || false,
                               copywritingOutput: item.copywritingOutput ? { ...item.copywritingOutput } : { titles: [], selectedTitleIndex: null, content: '' },
                               uploadedMaterials: item.uploadedMaterials ? [...item.uploadedMaterials] : [],
                             }));
@@ -3114,11 +3267,9 @@ ${relevantKnowledge}`,
   };
 
   const canEndInterview = () => {
-    const rounds = Math.floor((messages.length - 1) / 2);
-    const aiSaidEnd = messages.some(m =>
+    return messages.some(m =>
       m.role === 'model' && m.text.includes('<!-- INTERVIEW_ENDED_BY_AI -->')
     );
-    return rounds >= 15 || aiSaidEnd;
   };
 
   const handleSendMessage = async () => {
@@ -3145,14 +3296,23 @@ ${relevantKnowledge}`,
         .join('\n\n');
 
       const materialsContext = buildMaterialsContext(state.uploadedMaterials, 12000);
+      const interviewRefContent = await getStepRefsContent('interview');
+
+      const systemPrompt = INTERVIEW_SYSTEM_PROMPT
+        + (knowledgeContext ? `
+
+【重要：请严格遵循以下管理员提供的专业访谈方法论进行提问】：
+${knowledgeContext}` : "")
+        + (interviewRefContent ? `
+
+【参考文件 · 客户访谈参考手册】：
+${interviewRefContent}` : '')
+        + materialsContext;
 
       await deepseek.chatStream({
         model: deepseek.MODELS.fast,
         knowledge_id: ZHIPU_KNOWLEDGE_ID,
-        system: INTERVIEW_SYSTEM_PROMPT + (knowledgeContext ? `
-
-【重要：请严格遵循以下管理员提供的专业访谈方法论进行提问】：
-${knowledgeContext}` : "") + materialsContext,
+        system: systemPrompt,
         messages: [
           ...messages.map(m => ({
             role: m.role as 'user' | 'assistant',
@@ -3210,11 +3370,6 @@ ${knowledgeContext}` : "") + materialsContext,
     }
   };
 
-  const handlePlayVoice = (text: string, index: number) => {
-    if (playingIndex === index) return;
-    playTTS(text, () => setPlayingIndex(index), () => setPlayingIndex(null));
-  };
-
   // --- Information Agent State ---
   const [companyInfo, setCompanyInfo] = useState('');
   const [isGeneratingInfo, setIsGeneratingInfo] = useState(false);
@@ -3249,6 +3404,7 @@ ${knowledgeContext}` : ""}`,
         onUsage: reportTokenUsage,
       });
       setState(prev => ({ ...prev, infoReport: text || '' }));
+      if (text) saveResultToStorage('info_report', text, state.user?.uid);
     } catch (error) {
       console.error("Info generation error:", error);
     } finally {
@@ -3282,12 +3438,35 @@ ${knowledgeContext}` : ""}`,
           : state.infoReport
         : "";
 
+      const positioningRefContent = await getStepRefsContent('positioning');
+
+      const systemPrompt = POSITIONING_SYSTEM_PROMPT
+        + (knowledgeContext ? `
+
+请参考以上专业语料提升定位方案的专业度。` : "")
+        + (positioningRefContent ? `
+
+【参考文件 · 客户定位访谈参考手册 + 写作技巧提示词】：
+${positioningRefContent}` : '')
+        + "\n\n请务必学习并结合【访谈报告】、【企业与行业分析报告】和【上传资料内容】中的所有细节，确保定位方案与创始人的精神内核及业务逻辑高度契合。请务必使用 Markdown 格式，并包含详细的内容规划框架（每个阶段不少于20个选题）。";
+
       const text = await deepseek.generateText({
         model: deepseek.MODELS.chat,
-        system: POSITIONING_SYSTEM_PROMPT + (knowledgeContext ? `
-
-请参考以上专业语料提升定位方案的专业度。` : "") + "\n\n请务必学习并结合【访谈报告】、【企业与行业分析报告】和【上传资料内容】中的所有细节，确保定位方案与创始人的精神内核及业务逻辑高度契合。请务必使用 Markdown 格式，并包含详细的内容规划框架（每个阶段不少于20个选题）。",
+        system: systemPrompt,
         prompt: `基于以下信息生成3个不同维度的定位方案。
+
+【输出格式要求】：
+请严格按以下格式输出，不要合并为一个方案：
+### 定位方案 1：[方案名称]
+[完整方案内容，包含定位分析、内容方向、平台建议等]
+
+### 定位方案 2：[方案名称]
+[完整方案内容]
+
+### 定位方案 3：[方案名称]
+[完整方案内容]
+
+三个方案必须在人物主线角度、首批受众切入、表达风格、栏目侧重、平台侧重上形成真实差异。
 
 【特别说明】：如果以下报告内容为空或信息不足，请根据您的专业知识提供通用的、具有启发性的 ToB 创始人 IP 定位模板，并引导用户在后续对话中补充具体信息。
 
@@ -3312,14 +3491,19 @@ ${knowledgeContext}` : ""}`,
         return;
       }
 
-      const options = (text || '').split(/(?=###\s+定位分析|###\s+定位方案)/).filter(o => o.trim().length > 50);
+      const options = (text || '').split(/(?=###\s+定位方案\s*\d)/).filter(o => o.trim().length > 50);
 
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         positioningOptions: options.length > 0 ? options : [text],
         selectedPositioningIndex: 0,
         positioningReport: options[0] || text
       }));
+      const report = options[0] || text;
+      if (report) saveResultToStorage('positioning_report', report, state.user?.uid);
+      // 同时保存 options 数组，防止切换页面后丢失
+      const optionsToSave = options.length > 0 ? options : [text];
+      saveResultToStorage('positioning_options', optionsToSave, state.user?.uid);
     } catch (error: any) {
       console.error("Positioning generation error:", error);
       alert('定位方案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
@@ -3344,8 +3528,31 @@ ${positioningFeedback}
 请根据建议优化该方案，保持专业度。`,
         onUsage: reportTokenUsage,
       });
-      setState(prev => ({ ...prev, positioningReport: newReport }));
+      setState(prev => {
+        const idx = prev.selectedPositioningIndex ?? 0;
+        const updatedOptions = [...prev.positioningOptions];
+        if (updatedOptions.length > 0 && idx < updatedOptions.length) {
+          updatedOptions[idx] = newReport;
+        }
+        return {
+          ...prev,
+          positioningReport: newReport,
+          positioningOptions: updatedOptions.length > 0 ? updatedOptions : [newReport],
+        };
+      });
       setPositioningFeedback('');
+      // 立即保存到 localStorage + 服务器（防止刷新丢失）
+      saveResultToStorage('positioning_report', newReport, state.user?.uid);
+      saveResultToStorage('positioning_options', state.positioningOptions.map((opt, i) => i === (state.selectedPositioningIndex ?? 0) ? newReport : opt), state.user?.uid);
+      // 同步到服务器
+      try {
+        await api.updateUserProfile({
+          positioning_report: newReport,
+          positioning_options: state.positioningOptions.map((opt, i) => i === (state.selectedPositioningIndex ?? 0) ? newReport : opt),
+        });
+      } catch (e) {
+        console.error('修改定位保存到服务器失败:', e);
+      }
     } catch (error) {
       console.error("Modify positioning error:", error);
     } finally {
@@ -3353,148 +3560,51 @@ ${positioningFeedback}
     }
   };
 
-  // --- Copywriting Agent State ---
+  // --- Copywriting Generation State ---
   const [isGeneratingCopywriting, setIsGeneratingCopywriting] = useState(false);
-  const [copywritingTopic, setCopywritingTopic] = useState('');
-  const [isCopywritingThinking, setIsCopywritingThinking] = useState(false);
-  const copywritingEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    copywritingEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [state.copywritingMessages]);
+  // 选题卡点击时直接调用 generateCopywriting(topic)，无需额外 effect
 
-  const analyzeCopywritingInteraction = async (userText: string, modelText: string) => {
-    try {
-      const analysisText = await deepseek.generateText({
-        model: deepseek.MODELS.fast,
-        system: "你是一个专业的对话分析助手。请严格按照用户要求的 JSON 格式输出，不要输出任何额外的解释文字。",
-        prompt: `请分析以下对话，提取有价值的信息：
-用户说：${userText}
-AI说：${modelText}
-
-任务：
-1. 提取用户提到的行业见解、个人观点、创业故事等，作为访谈报告的补充素材。
-2. 识别用户的情绪，判断是否对产品使用有不满或建议。
-
-输出格式：JSON
-{
-  "supplementaryMaterial": "提取的素材内容，如果没有则为空字符串",
-  "feedback": "识别到的产品反馈，如果没有则为空字符串",
-  "sentiment": "情绪描述"
-}`,
-      });
-
-      const analysis = JSON.parse(analysisText || '{}');
-      
-      if (analysis.supplementaryMaterial) {
-        setState(prev => ({
-          ...prev,
-          interviewReport: prev.interviewReport + "\n\n### 补充素材 (来自文案创作对话)\n" + analysis.supplementaryMaterial
-        }));
-      }
-
-      if (analysis.feedback && state.user) {
-        try {
-          await api.submitFeedback({
-            type: 'improvement',
-            content: analysis.feedback,
-          });
-        } catch (err) {
-          console.error('Submit feedback error:', err);
-        }
-      }
-    } catch (e) {
-      console.error("Analysis error:", e);
-    }
-  };
-
-  const handleCopywritingMessage = async (userInput: string) => {
-    const text = userInput || copywritingTopic;
-    if (!text.trim() || isCopywritingThinking) return;
-
-    const userMsg: Message = { role: 'user', text: text };
-    setState(prev => ({
-      ...prev,
-      isCopywritingChatMode: true,
-      copywritingMessages: [...prev.copywritingMessages, userMsg]
-    }));
-    setCopywritingTopic('');
-    setIsCopywritingThinking(true);
-
-    try {
-      const knowledgeContext = state.knowledgeBase
-        .filter(k => k.category === 'copywriting')
-        .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
-        .join('\n\n');
-
-      const chatMsgs: Array<{ role: 'user' | 'assistant'; content: string }> = [
-        { role: 'user', content: `【背景上下文】：
-个人背景：${state.interviewReport || "（暂无）"}
-企业背景：${state.infoReport || "（暂无）"}
-定位方案：${state.positioningReport || "（暂无）"}
-上传资料：${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}
-
-【特别说明】：如果上述背景信息缺失，请通过对话引导用户提供相关的个人故事、业务亮点或创作意图。` },
-        ...state.copywritingMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.text })),
-        { role: 'user', content: text }
-      ];
-
-      const modelText = await deepseek.chat({
-        model: deepseek.MODELS.fast,
-        knowledge_id: ZHIPU_KNOWLEDGE_ID,
-        system: COPYWRITING_SYSTEM_PROMPT + "\n\n当前处于【思路整理阶段】。请通过对话形式帮用户整理思路，挖掘亮点。" + (knowledgeContext ? `
-
-请参考以下专业语料提升文案水准：
-${knowledgeContext}` : "") + "\n\n请务必学习并应用【背景上下文】中的所有资料，确保文案符合定位。如果思路已经非常清晰，请告知用户可以开始生成文案了。请保持专业且富有启发性。",
-        messages: chatMsgs,
-        onUsage: reportTokenUsage,
-      });
-      setState(prev => ({
-        ...prev,
-        copywritingMessages: [...prev.copywritingMessages, userMsg, { role: 'model', text: modelText }]
-      }));
-
-      // 异步分析
-      analyzeCopywritingInteraction(text, modelText);
-
-    } catch (error) {
-      console.error("Copywriting chat error:", error);
-    } finally {
-      setIsCopywritingThinking(false);
-    }
-  };
-
-  const generateCopywriting = async (topic?: string) => {
-    const finalTopic = topic || copywritingTopic;
-    // 如果是用户输入的选题且不在对话模式，先进入对话模式
-    if (!topic && finalTopic && !state.isCopywritingChatMode) {
-      handleCopywritingMessage(finalTopic);
-      return;
-    }
+  const generateCopywriting = async (topicData?: { title: string; [key: string]: any } | string) => {
+    const topicTitle = typeof topicData === 'string' ? topicData : topicData?.title || '';
+    const topicObj = typeof topicData === 'object' ? topicData : null;
 
     setIsGeneratingCopywriting(true);
     try {
-      const chatContext = state.copywritingMessages.map(m => `${m.role === 'user' ? '用户' : '顾问'}: ${m.text}`).join('\n');
-      
       const knowledgeContext = state.knowledgeBase
         .filter(k => k.category === 'copywriting')
         .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
         .join('\n\n');
 
+      const copywritingRefContent = await getStepRefsContent('copywriting');
+
+      const systemPrompt = COPYWRITING_GENERATE_SYSTEM_PROMPT
+        + (copywritingRefContent ? `
+
+【参考文件 · 客户采访与选题提示词 + 文案审核提示词】：
+${copywritingRefContent}` : '')
+        + "\n\n请结合【个人背景】、【企业背景】、【定位方案】和【上传资料内容】中的所有细节，创作符合定位且具有高水准的文案。";
+
       const cwText = await deepseek.generateText({
         model: deepseek.MODELS.fast,
-        system: COPYWRITING_SYSTEM_PROMPT + "\n\n如果背景信息缺失，请基于通用行业最佳实践创作高质量文案。请务必学习并应用【参考语料】中的文案技巧，并结合【个人背景】、【企业背景】、【定位方案】和【上传资料内容】中的所有细节，创作出符合定位且具有高水准的文案。\n\n请严格按照 JSON 格式输出，不要输出任何额外的解释文字。",
-        prompt: `基于以下信息创作3个标题和1篇口播文案，请务必返回 JSON 格式：
+        system: systemPrompt,
+        prompt: `基于以下信息创作3个标题和1篇口播文案：
 
 ${knowledgeContext ? `【参考语料】：
 ${knowledgeContext}
 
 ` : ""}
-【选题/主题】：
-${finalTopic || '基于对话整理的思路'}
+${topicObj ? `【选题详情】：
+- 编号：${topicObj.id || ''}
+- 标题：${topicObj.title || ''}
+- 爆款类型：${topicObj.hookType || ''}
+- 3秒钩子：${topicObj.hook3s || ''}
+- 适合平台：${topicObj.platform || ''}
+- 优先级：${topicObj.priority || ''}
+- 状态：${topicObj.status || ''}
 
-【对话上下文】：
-${chatContext || "（暂无对话）"}
+` : ''}【选题/主题】：
+${topicTitle || '基于背景创作'}
 
 【定位方案】：
 ${state.positioningReport || "（暂无，请基于通用爆款逻辑创作）"}
@@ -3507,22 +3617,393 @@ ${state.infoReport || "（暂无）"}
 
 【上传资料内容】：
 ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
+        max_tokens: 16000, // 文案输出量大（3标题+1脚本），需要足够空间
         onUsage: reportTokenUsage,
       });
 
-      const data = JSON.parse(cwText || '{}');
-      setState(prev => ({ 
-        ...prev, 
+      console.log('[generateCopywriting] ✓ AI 请求成功，内容长度:', cwText.length);
+
+      // 使用通用 JSON 解析器解析 AI 返回
+      let data: any;
+      try {
+        data = parseJsonResponse(cwText) || {};
+      } catch (parseErr: any) {
+        // parseJsonResponse 内部已记录详细日志，这里补充上下文
+        console.error('[generateCopywriting] parseJsonResponse 抛出异常:', parseErr?.message || parseErr);
+        throw new Error('AI 返回的内容无法解析为 JSON：' + (parseErr?.message || parseErr));
+      }
+      console.log('[generateCopywriting] ✓ 解析成功，data 类型:', typeof data, 'keys:', Object.keys(data));
+
+      if (!data.titles && !data.content) {
+        console.error('[generateCopywriting] AI 返回内容格式异常，完整内容长度:', cwText.length);
+        console.error('[generateCopywriting] AI 返回内容前 1000 字符:', cwText.slice(0, 1000));
+        throw new Error('AI 返回的内容格式不正确，未找到 titles 或 content 字段（请查看控制台 [generateCopywriting] 日志）');
+      }
+      console.log('[generateCopywriting] ✓ 字段验证通过，titles:', data.titles?.length, 'content:', data.content?.length);
+
+      setState(prev => ({
+        ...prev,
         copywritingOutput: {
           titles: data.titles || [],
           selectedTitleIndex: 0,
           content: data.content || ''
         }
       }));
+      console.log('[generateCopywriting] ✓ 状态已更新');
     } catch (error) {
-      console.error("Copywriting generation error:", error);
+      console.error("[generateCopywriting] 生成失败 - 完整错误:", error);
+      console.error("[generateCopywriting] 错误栈:", error?.stack);
+      if (cwText) {
+        console.error("[generateCopywriting] AI 原始返回内容长度:", cwText.length);
+        console.error("[generateCopywriting] AI 原始返回内容前 1000 字符:", cwText.slice(0, 1000));
+      }
+      alert('文案生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
     } finally {
       setIsGeneratingCopywriting(false);
+    }
+  };
+
+  // ============================================================
+  // 选题页面：AI 生成 + 解析
+  // ============================================================
+
+  /**
+   * 通用 JSON 解析器（4 层策略）
+   * 处理：纯 JSON / Markdown 代码块包裹 / 前后有废话 / 被截断的 JSON
+   */
+  const parseJsonResponse = (aiResponse: string): any | null => {
+    console.log('[parseJson] 开始解析，内容长度:', aiResponse.length, '前200字符:', aiResponse.slice(0, 200));
+    let parsed: any = null;
+
+    // 策略1: 直接解析
+    try {
+      parsed = JSON.parse(aiResponse);
+      console.log('[parseJson] 策略1 直接解析成功');
+      return parsed;
+    } catch (e: any) {
+      console.log('[parseJson] 策略1 失败:', e?.message || e);
+    }
+
+    // 策略2: 提取 Markdown 代码块中的 JSON
+    if (!parsed) {
+      try {
+        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          parsed = JSON.parse(codeBlockMatch[1]);
+          console.log('[parseJson] 策略2 代码块解析成功');
+          return parsed;
+        }
+        console.log('[parseJson] 策略2 未找到代码块');
+      } catch (e: any) {
+        console.log('[parseJson] 策略2 失败:', e?.message || e);
+      }
+    }
+
+    // 策略3: 正则提取第一个 { 到最后一个 } 之间的内容
+    if (!parsed) {
+      try {
+        const firstBrace = aiResponse.indexOf('{');
+        const lastBrace = aiResponse.lastIndexOf('}');
+        console.log('[parseJson] 策略3: firstBrace=', firstBrace, 'lastBrace=', lastBrace, 'responseLength=', aiResponse.length);
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          let jsonStr = aiResponse.substring(firstBrace, lastBrace + 1);
+          console.log('[parseJson] 策略3 提取的 JSON 长度:', jsonStr.length, '前100字符:', jsonStr.slice(0, 100));
+          jsonStr = repairTruncatedJson(jsonStr);
+          parsed = JSON.parse(jsonStr);
+          console.log('[parseJson] 策略3 解析成功');
+          return parsed;
+        }
+      } catch (e: any) {
+        console.log('[parseJson] 策略3 失败:', e?.message || e);
+      }
+    }
+
+    console.error('[parseJson] 所有策略都失败。AI 返回内容长度:', aiResponse.length, '前500字符:', aiResponse.slice(0, 500));
+    return null;
+  };
+
+  /**
+   * 从 AI 返回的文本中提取并解析选题 JSON
+   * 处理多种返回格式：纯 JSON、Markdown 包裹、前后有废话等
+   */
+  const parseTopicPool = (aiResponse: string): { stages: any[] } | null => {
+    const parsed = parseJsonResponse(aiResponse);
+    if (!parsed) return null;
+
+    // 归一化：支持两种格式
+    // 格式A: { "stages": [...] } （期望格式）
+    // 格式B: [...] （AI 有时直接返回数组）
+    if (Array.isArray(parsed)) {
+      return { stages: parsed };
+    }
+    if (parsed.stages && Array.isArray(parsed.stages)) {
+      return parsed;
+    }
+
+    console.warn('[parseTopicPool] 格式不符，parsed keys:', Object.keys(parsed));
+    // 尝试把顶层数组字段包装成 stages
+    const arrayField = Object.values(parsed).find((v: any) => Array.isArray(v) && v.length > 0 && v[0]?.stage);
+    if (arrayField) {
+      return { stages: arrayField as any[] };
+    }
+
+    console.error('[parseTopicPool] 无法识别格式:', parsed);
+    return null;
+  };
+
+  /**
+   * 修复被截断的 JSON（补全缺失的 ] 和 }）
+   * 当 AI 输出超过 max_tokens 限制时，JSON 末尾可能被截断
+   */
+  const repairTruncatedJson = (jsonStr: string): string => {
+    // 移除末尾可能的不完整内容（从最后一个完整的 } 之后截断）
+    let lastBrace = jsonStr.lastIndexOf('}');
+    if (lastBrace !== -1) {
+      // 检查 } 后面是否有非空白字符
+      const afterBrace = jsonStr.slice(lastBrace + 1).trim();
+      if (afterBrace.length > 0) {
+        // 有不完整的内容，截断到最后一个 }
+        jsonStr = jsonStr.slice(0, lastBrace + 1);
+      }
+    }
+
+    // 计算需要补多少个 ]
+    const openBrackets = (jsonStr.match(/\[/g) || []).length;
+    const closeBrackets = (jsonStr.match(/\]/g) || []).length;
+    const missingCloseBrackets = openBrackets - closeBrackets;
+
+    // 计算需要补多少个 }
+    const openBraces = (jsonStr.match(/\{/g) || []).length;
+    const closeBraces = (jsonStr.match(/\}/g) || []).length;
+    const missingCloseBraces = openBraces - closeBraces;
+
+    if (missingCloseBrackets > 0 || missingCloseBraces > 0) {
+      console.log(`[repairTruncatedJson] 补全 JSON: 缺失 ] x${missingCloseBrackets}, } x${missingCloseBraces}`);
+      jsonStr += ']'.repeat(missingCloseBrackets) + '}'.repeat(missingCloseBraces);
+    }
+
+    return jsonStr;
+  };
+
+  /**
+   * Demo 选题数据（降级用）
+   */
+  const getDemoTopicPool = (): any[] => {
+    return [
+      {
+        stage: 1,
+        name: '0-30天：建立可信主线',
+        goal: '让用户先记住"万智是谁、在做什么、为什么值得持续关注"。主打真实过程、人设反差、核心观点和两个项目的从0到1。',
+        coreTask: '破圈认知 + 人设建立 + 项目主线解释',
+        platform: '抖音/视频号为主，小红书同步图文笔记',
+        style: '真实过程分享、轻反差、少卖货、多建立持续关注理由',
+        direction: '本阶段所有内容都要回到"真实项目推进 + AI商业落地 + ToB信任建立"。',
+        notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+        nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
+        topics: [
+          {
+            id: 'WZ-S1-001',
+            title: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
+            hookType: '反差判断型',
+            hook3s: '我不是在做AI工具，我是在用两个真实项目验证AI商业落地',
+            platform: '抖音 + 视频号 + 小红书',
+            priority: 'P0',
+            status: 'approved'
+          },
+          {
+            id: 'WZ-S1-002',
+            title: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
+            hookType: '反差判断型',
+            hook3s: '一个00后为什么同时做AI创始人IP系统和AI茶空间？',
+            platform: '抖音 + 小红书 + 视频号',
+            priority: 'P0',
+            status: 'approved'
+          },
+          {
+            id: 'WZ-S1-003',
+            title: 'AI茶馆这个想法，一开始其实只是普通茶馆',
+            hookType: '观点金句型',
+            hook3s: 'AI茶馆这个想法，一开始其实只是普通茶馆',
+            platform: '抖音 + 小红书 + 视频号',
+            priority: 'P0',
+            status: 'planned'
+          }
+        ]
+      },
+      {
+        stage: 2,
+        name: '31-60天：建立专业信任',
+        goal: '从过程记录进入方法论沉淀，证明你懂业务、懂内容、懂AI落地。重点区分高传播切口与高转化切口。',
+        coreTask: '方法论输出 + 客户教育 + 专业信任',
+        platform: '视频号/公众号承接深度，小红书/抖音做切口传播',
+        style: '判断清晰、案例带路、客户教育，不装专家',
+        direction: '本阶段所有内容都要回到"真实项目推进 + AI商业落地 + ToB信任建立"。',
+        notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+        nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
+        topics: [
+          {
+            id: 'WZ-S2-001',
+            title: '我做创始人IP系统后发现，老板最缺的不是文案',
+            hookType: '反差判断型',
+            hook3s: '我做创始人IP系统后发现，老板最缺的不是文案',
+            platform: '视频号 + 公众号 + 抖音',
+            priority: 'P0',
+            status: 'approved'
+          },
+          {
+            id: 'WZ-S2-002',
+            title: '两个团队解散后，我才知道什么人适合一起创业',
+            hookType: '踩坑复盘型',
+            hook3s: '两个团队解散后，我才知道什么人适合一起创业',
+            platform: '抖音 + 视频号',
+            priority: 'P0',
+            status: 'planned'
+          }
+        ]
+      },
+      {
+        stage: 3,
+        name: '61-90天：公开验证与轻转化',
+        goal: '用内测反馈、用户体验、会员样本、项目进展和真实案例证明两个项目有效，开始引导咨询、会员、合作。',
+        coreTask: '案例验证 + 反馈证明 + 会员转化',
+        platform: '视频号/抖音发布证据型短视频，公众号沉淀复盘，小红书做体验反馈',
+        style: '真实反馈、前后变化、轻转化、避免夸大承诺',
+        direction: '本阶段所有内容都要回到"真实项目推进 + AI商业落地 + ToB信任建立"。',
+        notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+        nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
+        topics: [
+          {
+            id: 'WZ-S3-001',
+            title: '兰亭茶境内测30天，我们收到了127条真实反馈',
+            hookType: '案例结果型',
+            hook3s: '兰亭茶境内测30天，我们收到了127条真实反馈',
+            platform: '视频号 + 抖音',
+            priority: 'P0',
+            status: 'approved'
+          }
+        ]
+      },
+      {
+        stage: 4,
+        name: '90天后：沉淀案例与扩展B端合作',
+        goal: '沉淀行业案例、对外空间方案、政府/园区合作、渠道伙伴和项目共创能力，形成更高客单的ToB合作入口。',
+        coreTask: '行业案例 + B端合作 + 项目共创 + 渠道招募',
+        platform: '视频号/公众号为主，配合线下活动、私域资料包、项目路演内容',
+        style: '案例沉淀、合作说明、资源筛选、稳健转化',
+        direction: '本阶段所有内容都要回到"真实项目推进 + AI商业落地 + ToB信任建立"。',
+        notRecommended: '不做泛AI工具测评、不做单纯鸡汤、不把兰亭茶境写成单一茶馆探店。',
+        nextAction: '优先选择本阶段P0选题进入脚本生成和集中拍摄。',
+        topics: [
+          {
+            id: 'WZ-S4-001',
+            title: '我们从AI茶空间项目中总结了3个ToB合作模式',
+            hookType: '机制证明型',
+            hook3s: '我们从AI茶空间项目中总结了3个ToB合作模式',
+            platform: '视频号 + 公众号',
+            priority: 'P0',
+            status: 'approved'
+          }
+        ]
+      }
+    ];
+  };
+
+  /**
+   * 构建选题页面的 AI 请求 prompt
+   */
+  const buildTopicPrompt = (interviewReport: string, positioningReport: string): string => {
+    const knowledgeContext = state.knowledgeBase
+      .filter(k => k.category === 'topic')
+      .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
+      .join('\n\n');
+
+    return `请严格基于【定位报告】规划选题。你只能输出纯 JSON，禁止任何其他文字、markdown 标记、代码块标记。
+
+【定位报告】（唯一核心依据）：
+${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成）"}
+
+${interviewReport ? `【访谈报告】（背景参考，选题方向以定位报告为准）：
+${interviewReport}` : ''}
+
+${knowledgeContext ? `【参考语料】：
+${knowledgeContext}` : ""}
+
+输出格式（严格遵循，不要输出任何其他内容）：
+{"stages":[{"stage":1,"name":"0-30天：建立可信主线","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S1-001","title":"选题标题","hookType":"反差判断型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":2,"name":"31-60天：信任深挖","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S2-001","title":"选题标题","hookType":"观点金句型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":3,"name":"61-90天：认知拔高","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S3-001","title":"选题标题","hookType":"机制证明型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]},{"stage":4,"name":"90天后：变现闭环","goal":"阶段目标","coreTask":"核心任务","platform":"推荐平台","style":"推荐风格","direction":"方向判断","notRecommended":"不建议方向","nextAction":"下一步行动","topics":[{"id":"WZ-S4-001","title":"选题标题","hookType":"案例结果型","hook3s":"3秒钩子","platform":"抖音 + 小红书","priority":"P0","status":"approved"}]}]}
+
+4 个阶段，每阶段 10-15 条选题。`;
+  };
+
+  /**
+   * 调用 AI 生成选题池
+   */
+  const generateTopicPool = async () => {
+    setState(prev => ({ ...prev, topicGenerationStatus: 'generating' }));
+    setIsGeneratingTopics(true);
+    try {
+      // 确保定位报告可用
+      const effectivePositioningReport = state.positioningReport || '';
+      if (!effectivePositioningReport) {
+        alert('定位报告为空，请先完成定位并生成定位报告。');
+        setState(prev => ({ ...prev, topicGenerationStatus: 'idle' }));
+        setIsGeneratingTopics(false);
+        return;
+      }
+
+      const topicRefContent = await getStepRefsContent('topic');
+
+      const systemPrompt = TOPIC_SYSTEM_PROMPT
+        + (topicRefContent ? `
+
+【参考文件 · 选题提示词 + 写作技巧提示词】：
+${topicRefContent}` : '');
+
+      console.log('[TopicPool] 开始生成选题池...', {
+        hasPositioningReport: !!effectivePositioningReport,
+        reportLength: effectivePositioningReport.length,
+        hasInterviewReport: !!state.interviewReport,
+      });
+
+      const aiResponse = await deepseek.generateText({
+        model: deepseek.MODELS.fast,
+        system: systemPrompt,
+        prompt: buildTopicPrompt(state.interviewReport, effectivePositioningReport),
+        max_tokens: 16000, // 选题池输出量大（4阶段×12选题），需要足够空间
+        onUsage: reportTokenUsage,
+      });
+
+      console.log('[TopicPool] AI 返回内容长度:', aiResponse?.length);
+
+      const parsed = parseTopicPool(aiResponse || '');
+
+      if (parsed && parsed.stages?.length > 0) {
+        setState(prev => ({
+          ...prev,
+          topicPool: parsed.stages,
+          topicGenerationStatus: 'completed',
+        }));
+        saveResultToStorage('topic_pool', parsed.stages, state.user?.uid);
+        console.log('[TopicPool] 选题池生成成功，阶段数:', parsed.stages.length);
+      } else {
+        console.warn('选题 JSON 解析失败，AI 返回内容:', aiResponse?.slice(0, 500));
+        alert('选题生成返回格式异常，请稍后重试。如持续出现，请联系技术支持。');
+        const demoData = getDemoTopicPool();
+        setState(prev => ({
+          ...prev,
+          topicPool: demoData,
+          topicGenerationStatus: 'demo_fallback',
+        }));
+      }
+    } catch (error) {
+      console.error('选题生成失败:', error);
+      alert('选题生成失败：' + (error?.message || 'AI 服务暂时不可用，请稍后重试'));
+      setState(prev => ({
+        ...prev,
+        topicPool: getDemoTopicPool(),
+        topicGenerationStatus: 'demo_fallback',
+      }));
+    } finally {
+      setIsGeneratingTopics(false);
     }
   };
 
@@ -3660,10 +4141,11 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
           {[
             { id: 'interview', label: '访谈', icon: User },
             { id: 'positioning', label: '定位', icon: Target },
+            { id: 'topic', label: '选题', icon: FileText },
             { id: 'copywriting', label: '文案', icon: PenTool },
             { id: 'history', label: '历史', icon: Database },
           ].map((step) => {
-            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport);
+            const unlocked = isStepUnlocked(step.id as Step, state.interviewReport, state.topicPool, state.positioningReport, state.user?.role);
             return (
               <button
                 key={step.id}
@@ -3714,6 +4196,13 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
               >
                 <Trash2 className="w-5 h-5" />
               </button>
+              <button
+                onClick={clearUserLocalData}
+                className="p-2 text-gray-400 hover:text-orange-600 transition-colors"
+                title="清除本地缓存：清空当前用户的 localStorage 数据"
+              >
+                <Database className="w-5 h-5" />
+              </button>
             </>
           )}
           <button
@@ -3752,6 +4241,13 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
                 title="一键还原：清空所有用户数据"
               >
                 <Trash2 className="w-5 h-5 text-red-500" />
+              </button>
+              <button
+                onClick={clearUserLocalData}
+                className="p-2 bg-gray-50 rounded-lg"
+                title="清除本地缓存：清空当前用户的 localStorage 数据"
+              >
+                <Database className="w-5 h-5 text-orange-500" />
               </button>
             </>
           )}
@@ -3994,9 +4490,127 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
         )}
       </AnimatePresence>
 
+      {/* 隐私政策弹窗 */}
+      {showPrivacy && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPrivacy(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">隐私政策</h2>
+              <button
+                onClick={() => setShowPrivacy(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">我们重视您的隐私，并承诺保护您的个人信息安全。</p>
+              <h3 className="font-bold text-gray-900 mb-2">1. 信息收集</h3>
+              <p className="mb-4">我们会收集您在使用服务时主动提供的信息，包括但不限于手机号、邮箱、对话内容等。</p>
+              <h3 className="font-bold text-gray-900 mb-2">2. 信息使用</h3>
+              <p className="mb-4">我们收集的信息仅用于提供服务、改进产品体验和发送重要通知。</p>
+              <h3 className="font-bold text-gray-900 mb-2">3. 信息保护</h3>
+              <p className="mb-4">我们采用行业标准的安全措施保护您的信息，防止未经授权的访问、泄露或丢失。</p>
+              <h3 className="font-bold text-gray-900 mb-2">4. 信息共享</h3>
+              <p>除法律要求或经您明确同意外，我们不会向第三方共享您的个人信息。</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* 服务条款弹窗 */}
+      {showTerms && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowTerms(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">服务条款</h2>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">欢迎使用 ToB 创始人 IP 定制系统。请仔细阅读以下服务条款。</p>
+              <h3 className="font-bold text-gray-900 mb-2">1. 服务说明</h3>
+              <p className="mb-4">我们提供基于 AI 的创始人 IP 定制服务，包括访谈、信息分析、定位建议和文案创作。</p>
+              <h3 className="font-bold text-gray-900 mb-2">2. 用户责任</h3>
+              <p className="mb-4">用户应保证提供的信息真实准确，并承担因使用服务产生的所有责任。</p>
+              <h3 className="font-bold text-gray-900 mb-2">3. 知识产权</h3>
+              <p className="mb-4">服务中生成的内容归用户所有，但我们保留使用 anonymized 数据改进模型的权利。</p>
+              <h3 className="font-bold text-gray-900 mb-2">4. 服务变更</h3>
+              <p>我们保留随时修改或中断服务的权利，恕不另行通知。</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* 技术支持弹窗 */}
+      {showSupport && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowSupport(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold">技术支持</h2>
+              <button
+                onClick={() => setShowSupport(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+              <p className="mb-4">如需技术支持，请通过以下方式联系我们：</p>
+              <h3 className="font-bold text-gray-900 mb-2">📧 邮箱支持</h3>
+              <p className="mb-4">support@example.com</p>
+              <h3 className="font-bold text-gray-900 mb-2">💬 微信咨询</h3>
+              <p className="mb-4">请扫描页面底部的二维码或添加微信：wr930638246</p>
+              <h3 className="font-bold text-gray-900 mb-2">⏰ 服务时间</h3>
+              <p>工作日 9:00-18:00（北京时间）</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       <main className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
-        <StepIndicator 
-          currentStep={currentStep} 
+        <StepIndicator
+          currentStep={currentStep}
           onStepClick={(step) => setCurrentStep(step)}
           state={state}
         />
@@ -4014,9 +4628,9 @@ ${buildMaterialsContext(state.uploadedMaterials, 8000) || "（暂无）"}`,
             <span className="text-[10px] md:text-xs font-medium uppercase tracking-widest">ToB Founder IP System © 2026</span>
           </div>
           <div className="flex items-center gap-4 md:gap-8 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-400">
-            <a href="#" className="hover:text-black transition-colors">隐私政策</a>
-            <a href="#" className="hover:text-black transition-colors">服务条款</a>
-            <a href="#" className="hover:text-black transition-colors">技术支持</a>
+            <button onClick={() => setShowPrivacy(true)} className="hover:text-black transition-colors">隐私政策</button>
+            <button onClick={() => setShowTerms(true)} className="hover:text-black transition-colors">服务条款</button>
+            <button onClick={() => setShowSupport(true)} className="hover:text-black transition-colors">技术支持</button>
           </div>
         </div>
       </footer>

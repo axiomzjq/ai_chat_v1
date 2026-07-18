@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     interview_data JSONB DEFAULT '{}',
     information_report JSONB DEFAULT '{}',
     positioning_report JSONB DEFAULT '{}',
+    positioning_options JSONB DEFAULT '[]',
+    topic_pool JSONB DEFAULT '[]',
     copywriting_data JSONB DEFAULT '{}',
     current_step VARCHAR(50) DEFAULT 'interview' CHECK (current_step IN ('interview', 'information', 'positioning', 'copywriting', 'history')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -58,6 +60,10 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_user ON user_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_step ON user_profiles(current_step);
 
 COMMENT ON TABLE user_profiles IS '创始人 IP 定制核心数据（访谈/信息/定位/文案）';
+
+-- 迁移：为已有数据库添加新字段
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS positioning_options JSONB DEFAULT '[]';
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS topic_pool JSONB DEFAULT '[]';
 
 -- ============================================================
 -- 4. 对话会话表（当前前端未使用，为将来扩展保留）

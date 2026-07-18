@@ -118,6 +118,8 @@ export async function updateUserProfile(data: {
   interview_data?: any;
   information_report?: any;
   positioning_report?: any;
+  positioning_options?: any;
+  topic_pool?: any;
   copywriting_data?: any;
 }) {
   const res = await request<any>('/user/profile', {
