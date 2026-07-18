@@ -2279,9 +2279,23 @@ ${relevantKnowledge}`,
   };
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
+  // 判断用户是否在滚动容器底部附近（用于决定是否自动滚动）
+  const checkNearBottom = (el: HTMLDivElement | null, threshold = 80): boolean => {
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  };
+
+  // 用户手动滚动时更新标记：如果滚到了底部附近，恢复自动滚动；否则暂停
+  const handleChatScroll = () => {
+    isNearBottomRef.current = checkNearBottom(chatContainerRef.current);
+  };
+
+  // 新消息到达时：仅在用户已在底部附近时才自动滚动到底部
   useEffect(() => {
-    if (isStarted) {
+    if (isStarted && isNearBottomRef.current) {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isStarted]);
@@ -2410,7 +2424,11 @@ ${relevantKnowledge}`,
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 max-h-[400px] md:max-h-[500px]">
+            <div
+              ref={chatContainerRef}
+              onScroll={handleChatScroll}
+              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 max-h-[400px] md:max-h-[500px]"
+            >
               {messages.map((m, i) => {
                 const isLastModel = m.role === 'model' && isTyping && i === messages.length - 1;
                 return (
