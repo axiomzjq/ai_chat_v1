@@ -3466,7 +3466,11 @@ ${knowledgeContext}` : "")
 
 【参考文件 · 客户访谈参考手册】：
 ${interviewRefContent}` : '')
-        + materialsContext;
+        + materialsContext
+        + `
+
+【关键规则重申 · 必须严格遵守】
+本轮回复中，你只能向用户提出 1 个问题。即使你想了解多个方向，也必须将它们合并为 1 个问题。绝不能在一条回复中提出 2 个或更多独立问题。`;
 
       await deepseek.chatStream({
         model: deepseek.MODELS.fast,
