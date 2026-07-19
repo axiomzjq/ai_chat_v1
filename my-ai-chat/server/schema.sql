@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     phone VARCHAR(20),
     display_name VARCHAR(255),
     avatar_url TEXT,
-    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'superadmin')),
     -- 订阅制额度体系
     subscription_start_at TIMESTAMPTZ,                    -- 订阅开始时间（首次登录自动设置）
     subscription_days INT DEFAULT 7,                      -- 订阅时长（天）

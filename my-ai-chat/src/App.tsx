@@ -174,12 +174,13 @@ export function getUserScopedKey(baseKey: string, userId: string): string {
 type Step = 'interview' | 'information' | 'positioning' | 'topic' | 'copywriting' | 'history';
 
 // 步骤解锁：访谈和历史始终可进；后续步骤需完成访谈（生成深度报告）后才解锁
-const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], positioningReport?: string, userRole?: 'user' | 'admin') => {
+const isStepUnlocked = (stepId: Step, interviewReport: string, topicPool: any[], positioningReport?: string, userRole?: 'user' | 'admin' | 'superadmin') => {
   if (stepId === 'interview' || stepId === 'history') return true;
-  if (userRole === 'admin') return true;
+  if (userRole === 'superadmin') return true;
+  if (userRole === 'admin') return true; // 普通管理员也解锁所有步骤
   if (stepId === 'positioning') return !!interviewReport;
-  if (stepId === 'topic') return !!positioningReport; // 需要定位报告
-  if (stepId === 'copywriting') return !!topicPool.length; // 需要选题池
+  if (stepId === 'topic') return !!positioningReport;
+  if (stepId === 'copywriting') return !!topicPool.length;
   return false;
 };
 type View = 'login' | 'app' | 'admin';
@@ -188,7 +189,7 @@ interface UserProfile {
   uid: string;
   email: string;
   phone: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'superadmin';
   subscriptionStartAt: string | null;
   subscriptionDays: number;
   tokenQuota: number;
@@ -608,8 +609,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: { 
-  onLogin: (user: FirebaseUser, role: 'user' | 'admin') => void,
+function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
+  onLogin: (user: FirebaseUser, role: 'user' | 'admin' | 'superadmin') => void,
   isAdmin: boolean,
   setIsAdmin: (val: boolean) => void,
   onDebugLogin?: (asAdmin: boolean) => void
@@ -650,22 +651,22 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
-      
+
       // 从后端 API 获取用户角色（替代 Firestore）
       const token = localStorage.getItem('authing_access_token');
-      let role: 'user' | 'admin' = 'user';
-      
+      let role: 'user' | 'admin' | 'superadmin' = 'user';
+
       if (token) {
         try {
           const authData = await api.verifyAuth(token);
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          // 不再根据手机号硬编码判断管理员，角色完全由后端数据库决定
         }
       }
 
-      if (isAdmin && role !== 'admin') {
+      // 管理员登录 tab 允许 admin 和 superadmin
+      if (isAdmin && !['admin', 'superadmin'].includes(role)) {
         alert('您没有管理员权限，请使用普通用户登录。');
         await signOut(auth);
         return;
@@ -683,26 +684,26 @@ function Login({ onLogin, isAdmin, setIsAdmin, onDebugLogin }: {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone || !code) return;
-    
+
     setLoading(true);
     try {
       const user = await loginByPhoneCode(phone, code);
-      
+
       // 从后端 API 获取用户角色（替代 Firestore）
       const token = localStorage.getItem('authing_access_token');
-      let role: 'user' | 'admin' = 'user';
-      
+      let role: 'user' | 'admin' | 'superadmin' = 'user';
+
       if (token) {
         try {
           const authData = await api.verifyAuth(token);
           role = authData.user.role;
         } catch (e) {
           console.error('获取用户信息失败:', e);
-          // 不再根据手机号硬编码判断管理员，角色完全由后端数据库决定
         }
       }
 
-      if (isAdmin && role !== 'admin') {
+      // 管理员登录 tab 允许 admin 和 superadmin
+      if (isAdmin && !['admin', 'superadmin'].includes(role)) {
         alert('您没有管理员权限，请使用普通用户登录。');
         await signOut(auth);
         return;
@@ -858,9 +859,10 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [newDoc, setNewDoc] = useState({ title: '', content: '', type: 'interview' as any });
-  const [preCreateForm, setPreCreateForm] = useState({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' as 'user' | 'admin' });
+  const [preCreateForm, setPreCreateForm] = useState({ phone: '', subscription_days: 7, token_quota: 100000, role: 'user' as 'user' | 'admin' | 'superadmin' });
   const [preCreating, setPreCreating] = useState(false);
   const [showPreCreateModal, setShowPreCreateModal] = useState(false);
+  const [isSuperadmin, setIsSuperadmin] = useState(false); // 当前用户是否为超级管理员
 
   // 用户编辑弹窗
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -872,6 +874,7 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
     try {
       const usersRes = await api.getAdminUsers();
       setUsers(usersRes.data || []);
+      setIsSuperadmin(!!usersRes.isSuperadmin);
       const fbRes = await api.getFeedback({ pageSize: 100 });
       setFeedbacks(fbRes.data || []);
       const kbRes = await api.getKnowledgeBase({ pageSize: 100 });
@@ -916,10 +919,27 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
   };
 
   const handleUpdateRole = async (uid: string, currentRole: string) => {
-    const newRole = currentRole === 'admin' ? 'user' : 'admin';
-    if (!confirm(`确定将该用户设为 ${newRole === 'admin' ? '管理员' : '普通用户'} 吗？`)) return;
+    // 普通管理员不能操作管理员和超级管理员
+    if (!isSuperadmin && currentRole !== 'user') {
+      alert('普通管理员只能操作普通用户的角色');
+      return;
+    }
+
+    // 角色切换逻辑
+    let newRole: string;
+    if (currentRole === 'user') {
+      newRole = isSuperadmin ? 'admin' : 'admin'; // 普通管理员也只能提升为 admin（后端会限制）
+    } else if (currentRole === 'admin') {
+      newRole = isSuperadmin ? 'superadmin' : 'user';
+    } else {
+      // superadmin → 只有超级管理员可以降级
+      newRole = 'admin';
+    }
+
+    const roleLabel = { user: '普通用户', admin: '管理员', superadmin: '超级管理员' };
+    if (!confirm(`确定将该用户设为 ${roleLabel[newRole as keyof typeof roleLabel] || newRole} 吗？`)) return;
     try {
-      await api.updateUserRole(uid, { role: newRole as 'user' | 'admin' });
+      await api.updateUserRole(uid, { role: newRole as 'user' | 'admin' | 'superadmin' });
       alert('角色更新成功');
       // 刷新列表
       const usersRes = await api.getAdminUsers();
@@ -1219,9 +1239,11 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
                           <td className="px-6 py-4">
                             <span className={cn(
                               "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                              u.role === 'superadmin' ? "bg-red-100 text-red-700" :
                               u.role === 'admin' ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
                             )}>
-                              {u.role === 'admin' ? '管理员' : '普通用户'}
+                              {u.role === 'superadmin' ? '超级管理员' :
+                               u.role === 'admin' ? '管理员' : '普通用户'}
                             </span>
                           </td>
                           <td className="px-6 py-4">
@@ -1258,18 +1280,24 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <button
-                                onClick={() => openEditModal(u)}
-                                className="text-[10px] font-bold text-black hover:underline"
-                              >
-                                编辑
-                              </button>
-                              <button
-                                onClick={() => handleUpdateRole(u.id, u.role)}
-                                className="text-[10px] font-bold text-gray-600 hover:underline"
-                              >
-                                切换角色
-                              </button>
+                              {/* 超级管理员用户：只有超级管理员可以编辑 */}
+                              {(isSuperadmin || u.role !== 'superadmin') && (
+                                <button
+                                  onClick={() => openEditModal(u)}
+                                  className="text-[10px] font-bold text-black hover:underline"
+                                >
+                                  编辑
+                                </button>
+                              )}
+                              {/* 切换角色：超级管理员可操作所有用户，普通管理员只能操作普通用户 */}
+                              {(isSuperadmin || u.role === 'user') && (
+                                <button
+                                  onClick={() => handleUpdateRole(u.id, u.role)}
+                                  className="text-[10px] font-bold text-gray-600 hover:underline"
+                                >
+                                  切换角色
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleResetTokenUsed(u.id)}
                                 className="text-[10px] font-bold text-gray-400 hover:text-green-600 transition-colors"
@@ -1484,12 +1512,16 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">用户角色</label>
                     <select
                       value={preCreateForm.role}
-                      onChange={(e) => setPreCreateForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
+                      onChange={(e) => setPreCreateForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' | 'superadmin' }))}
                       className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm appearance-none"
                     >
                       <option value="user">普通用户</option>
-                      <option value="admin">管理员</option>
+                      {isSuperadmin && <option value="admin">管理员</option>}
+                      {isSuperadmin && <option value="superadmin">超级管理员</option>}
                     </select>
+                    {!isSuperadmin && (
+                      <p className="text-[10px] text-gray-400">普通管理员只能创建普通用户</p>
+                    )}
                   </div>
                 </div>
 
@@ -1545,7 +1577,7 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
 
                 <h2 className="text-2xl font-bold mb-2">编辑用户配置</h2>
                 <p className="text-gray-400 text-sm mb-8">
-                  {editingUser.email || editingUser.phone || '用户'} / {editingUser.role === 'admin' ? '管理员' : '普通用户'}
+                  {editingUser.email || editingUser.phone || '用户'} / {editingUser.role === 'superadmin' ? '超级管理员' : editingUser.role === 'admin' ? '管理员' : '普通用户'}
                 </p>
 
                 <div className="space-y-5">
@@ -1609,7 +1641,7 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
         </AnimatePresence>
 
         {/* 管理员浮动切换按钮：切换到对话页面 */}
-        {user.role === 'admin' && onSwitchToApp && (
+        {['admin', 'superadmin'].includes(user.role) && onSwitchToApp && (
           <button
             onClick={onSwitchToApp}
             className="fixed bottom-6 right-6 z-[150] w-14 h-14 bg-black text-white rounded-full shadow-2xl shadow-black/30 flex items-center justify-center hover:bg-gray-800 transition-all hover:scale-105"
@@ -1745,9 +1777,9 @@ export default function App() {
                 createdAt: new Date(res.user.created_at),
               };
               const savedView = loadUIState().lastView;
-              // 管理员：有上次记录且明确在 app 就回 app，否则默认进 admin
+              // 管理员/超级管理员：有上次记录且明确在 app 就回 app，否则默认进 admin
               // 普通用户：一律进 app
-              const targetView = profile.role === 'admin'
+              const targetView = ['admin', 'superadmin'].includes(profile.role)
                 ? (savedView === 'app' ? 'app' : 'admin')
                 : 'app';
               setState(prev => ({
@@ -1843,7 +1875,7 @@ export default function App() {
   // 检查用户订阅和 Token 额度
   const checkUserLimits = (): { ok: boolean; message?: string } => {
     if (!state.user) return { ok: false, message: '未登录' };
-    if (state.user.role === 'admin') return { ok: true };
+    if (['admin', 'superadmin'].includes(state.user.role)) return { ok: true };
 
     // Token 检查
     const tokenUsed = Number(state.user.tokenUsed) || 0;
@@ -1851,6 +1883,8 @@ export default function App() {
     if (tokenUsed >= tokenQuota) {
       return { ok: false, message: '您的 Token 额度已用完，请联系管理员续期。' };
     }
+
+    // 订阅到期检查
 
     // 订阅到期检查
     if (state.user.subscriptionStartAt) {
@@ -1866,7 +1900,7 @@ export default function App() {
 
   // 上报 Token 使用量并更新本地状态
   const reportTokenUsage = (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => {
-    if (!state.user || state.user.role === 'admin') return;
+    if (!state.user || ['admin', 'superadmin'].includes(state.user.role)) return;
     api.trackTokenUsage(usage).catch(console.error);
     setState(prev => ({
       ...prev,
@@ -4707,7 +4741,7 @@ ${topicRefContent}` : '');
       </footer>
 
       {/* 管理员浮动切换按钮：切换到管理后台 */}
-      {state.user?.role === 'admin' && (
+      {['admin', 'superadmin'].includes(state.user?.role || '') && (
         <button
           onClick={() => setState(prev => ({ ...prev, view: 'admin' }))}
           className="fixed bottom-6 right-6 z-[150] w-14 h-14 bg-black text-white rounded-full shadow-2xl shadow-black/30 flex items-center justify-center hover:bg-gray-800 transition-all hover:scale-105"
