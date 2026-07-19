@@ -21,3 +21,8 @@ DROP POLICY IF EXISTS kb_read_all ON knowledge_base;
 DROP POLICY IF EXISTS kb_write_admin ON knowledge_base;
 CREATE POLICY kb_read_all ON knowledge_base FOR SELECT USING (true);
 CREATE POLICY kb_write_admin ON knowledge_base FOR ALL USING (current_setting('app.current_user_role')::TEXT = 'admin');
+
+-- 迁移：users 表 role 字段增加 superadmin（2026-07-18）
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin', 'superadmin'));
+COMMENT ON COLUMN users.role IS '用户角色：user=普通用户, admin=普通管理员, superadmin=超级管理员(ADMIN_PHONE)';
