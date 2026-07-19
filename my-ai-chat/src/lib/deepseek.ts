@@ -12,8 +12,8 @@ function getAuthToken(): string | null {
 
 // 模型映射：把内部简称映射到智谱AI 模型名
 export const MODELS = {
-  chat: 'glm-5.1',    // 主力模型
-  fast: 'glm-5.1',    // 快速响应
+  chat: 'glm-5.2',    // 主力模型
+  fast: 'glm-5.2',    // 快速响应
 } as const;
 
 export type ModelKey = keyof typeof MODELS;
