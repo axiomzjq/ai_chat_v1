@@ -2606,7 +2606,7 @@ ${relevantKnowledge}`,
                     onChange={handleFileUpload}
                     multiple
                     className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.txt,.mp4,.xlsx,.xls"
+                    accept=".txt,.md,.docx,.doc,.xlsx,.xls"
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
