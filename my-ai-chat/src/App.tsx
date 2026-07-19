@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import JSZip from 'jszip';
 import * as deepseek from './lib/deepseek';
 import {
   INTERVIEW_SYSTEM_PROMPT,
@@ -280,6 +281,41 @@ ${rawText}`,
   } catch (error) {
     console.error("AI Organize Error:", error);
     return rawText;
+  }
+};
+
+// --- File Parsing Helpers ---
+
+const extractPptxText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const slideFiles = Object.keys(zip.files)
+      .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/slide(\d+)/)?.[1] || '0');
+        const numB = parseInt(b.match(/slide(\d+)/)?.[1] || '0');
+        return numA - numB;
+      });
+
+    const slideTexts: string[] = [];
+    for (const file of slideFiles) {
+      const xml = await zip.files[file].async('string');
+      // 提取所有 <a:t> 标签中的文本（PPTX 文本节点）
+      const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g);
+      if (matches) {
+        const texts = matches
+          .map(m => m.replace(/<[^>]+>/g, '').trim())
+          .filter(t => t.length > 0);
+        if (texts.length > 0) {
+          slideTexts.push(texts.join(' '));
+        }
+      }
+    }
+
+    return slideTexts.join('\n\n').trim();
+  } catch (error) {
+    console.error('[PPTX] 解析失败:', error);
+    throw new Error('PPTX 文件解析失败，请确认文件未损坏。');
   }
 };
 
@@ -1027,8 +1063,9 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
     try {
       const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
       const isDocx = file.name.endsWith('.docx');
+      const isPptx = file.name.endsWith('.pptx');
       const reader = new FileReader();
-      
+
       reader.onload = async (event) => {
         let content = '';
         if (isExcel) {
@@ -1041,6 +1078,9 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
           const arrayBuffer = event.target?.result as ArrayBuffer;
           const result = await mammoth.extractRawText({ arrayBuffer });
           content = result.value;
+        } else if (isPptx) {
+          const arrayBuffer = event.target?.result as ArrayBuffer;
+          content = await extractPptxText(arrayBuffer);
         } else {
           content = event.target?.result as string;
         }
@@ -1051,7 +1091,7 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
         setUploading(false);
       };
 
-      if (isExcel || isDocx) {
+      if (isExcel || isDocx || isPptx) {
         reader.readAsArrayBuffer(file);
       } else {
         reader.readAsText(file);
@@ -1394,7 +1434,7 @@ function AdminPanel({ user, onLogout, onDebugLogin, onSwitchToApp }: { user: Use
                     <label className="cursor-pointer bg-white border border-gray-100 rounded-xl px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm">
                       <Upload size={14} />
                       上传本地文件
-                      <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.doc,.docx,.xlsx,.xls" />
+                      <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.doc,.docx,.pptx,.xlsx,.xls" />
                     </label>
                   </div>
                 </div>
@@ -2080,6 +2120,7 @@ export default function App() {
       const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
       const isDocx = file.name.endsWith('.docx');
       const isDoc = file.name.endsWith('.doc');
+      const isPptx = file.name.endsWith('.pptx');
       const isText = file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.txt');
       const isPdf = file.name.endsWith('.pdf');
       const isImage = file.type.startsWith('image/');
@@ -2091,8 +2132,8 @@ export default function App() {
         return;
       }
 
-      if (!isText && !isExcel && !isDocx && !isDoc) {
-        alert(`不支持的文件格式：${file.name}\n目前仅支持 .txt, .md, .docx, .doc, .xlsx, .xls`);
+      if (!isText && !isExcel && !isDocx && !isDoc && !isPptx) {
+        alert(`不支持的文件格式：${file.name}\n目前仅支持 .txt, .md, .docx, .doc, .pptx, .xlsx, .xls`);
         return;
       }
 
@@ -2119,6 +2160,9 @@ export default function App() {
               alert(`${file.name} 解析失败。.doc（旧格式）请另存为 .docx 后再上传。`);
               return;
             }
+          } else if (isPptx) {
+            const arrayBuffer = event.target?.result as ArrayBuffer;
+            content = await extractPptxText(arrayBuffer);
           } else {
             content = event.target?.result as string;
           }
@@ -2168,7 +2212,7 @@ export default function App() {
         alert(`无法读取文件 ${file.name}，请重试。`);
       };
 
-      if (isExcel || isDocx || isDoc) {
+      if (isExcel || isDocx || isDoc || isPptx) {
         reader.readAsArrayBuffer(file);
       } else {
         reader.readAsText(file);
@@ -2606,7 +2650,7 @@ ${relevantKnowledge}`,
                     onChange={handleFileUpload}
                     multiple
                     className="hidden"
-                    accept=".txt,.md,.docx,.doc,.xlsx,.xls"
+                    accept=".txt,.md,.docx,.doc,.pptx,.xlsx,.xls"
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
