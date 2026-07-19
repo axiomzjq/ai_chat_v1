@@ -2117,8 +2117,9 @@ export default function App() {
     const files = e.target.files;
     if (!files) return;
 
-    // 单文件大小限制 2MB，避免前端内存压力和 AI 上下文超限
+    // 单文件大小限制：普通文件 2MB，PPT 500MB（PPT 为纯文本载体，体积大但提取后按 50K 截断）
     const MAX_FILE_SIZE = 2 * 1024 * 1024;
+    const MAX_PPTX_SIZE = 500 * 1024 * 1024;
     // 单文件内容最大字符数，超长将截断并跳过 AI 整理
     const MAX_CONTENT_LENGTH = 50000;
 
@@ -2143,8 +2144,11 @@ export default function App() {
         return;
       }
 
-      if (file.size > MAX_FILE_SIZE) {
-        alert(`文件 ${file.name} 过大（${(file.size / 1024 / 1024).toFixed(2)}MB）。\n为保证访谈流畅，请上传不超过 2MB 的资料，或只复制其中相关片段。`);
+      // PPT 允许 500MB，其他文件限制 2MB
+      const limit = isPptx ? MAX_PPTX_SIZE : MAX_FILE_SIZE;
+      if (file.size > limit) {
+        const limitMB = (limit / 1024 / 1024).toFixed(0);
+        alert(`文件 ${file.name} 过大（${(file.size / 1024 / 1024).toFixed(2)}MB）。\n${isPptx ? 'PPT 文件最大支持 500MB，提取后文本将截取前 50000 字符。' : `为保证访谈流畅，请上传不超过 ${limitMB}MB 的资料，或只复制其中相关片段。`}`);
         return;
       }
 
