@@ -4269,6 +4269,12 @@ ${topicRefContent}` : '');
               </button>
             </>
           )}
+          {/* 当前登录账号 */}
+          {state.user && (
+            <span className="hidden lg:inline-flex items-center text-xs text-gray-400 font-mono max-w-[160px] truncate" title={state.user.phone || state.user.email || ''}>
+              {state.user.phone || state.user.email}
+            </span>
+          )}
           <button
             onClick={handleLogout}
             className="p-2 text-gray-400 hover:text-red-500 transition-colors"
@@ -4315,6 +4321,12 @@ ${topicRefContent}` : '');
                 <Database className="w-5 h-5 text-orange-500" />
               </button>
             </>
+          )}
+          {/* 当前登录账号（移动端） */}
+          {state.user && (
+            <span className="md:hidden text-[10px] text-gray-400 font-mono max-w-[80px] truncate" title={state.user.phone || state.user.email || ''}>
+              {state.user.phone || state.user.email}
+            </span>
           )}
           <button
             onClick={handleLogout}
