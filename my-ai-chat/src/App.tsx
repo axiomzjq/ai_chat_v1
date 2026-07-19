@@ -313,7 +313,7 @@ const buildMaterialsContext = (materials: UploadedMaterial[], maxTotalChars = 12
 const BOT_AVATAR = "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=200&h=200";
 const USER_AVATAR = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=200&h=200";
 
-// --- Header Step Indicator (compact, no labels) ---
+// --- Header Step Indicator (compact with labels) ---
 function HeaderStepIndicator({ currentStep, onStepClick, state }: {
   currentStep: Step;
   onStepClick: (step: Step) => void;
@@ -328,7 +328,7 @@ function HeaderStepIndicator({ currentStep, onStepClick, state }: {
   ];
 
   return (
-    <div className="hidden lg:flex items-center gap-1.5">
+    <div className="hidden lg:flex items-center gap-4">
       {steps.map((step, index) => {
         const Icon = step.icon;
         const isActive = currentStep === step.id;
@@ -340,22 +340,32 @@ function HeaderStepIndicator({ currentStep, onStepClick, state }: {
             <button
               onClick={() => unlocked && onStepClick(step.id)}
               disabled={!unlocked}
-              title={step.label}
               className={cn(
-                "relative w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200",
-                isActive ? "bg-black text-white shadow-md scale-110" :
-                isPast ? "bg-green-500 text-white" :
-                unlocked ? "bg-gray-200 text-gray-400 hover:bg-gray-300" : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                "relative flex flex-col items-center gap-1 group outline-none transition-all",
+                unlocked ? "cursor-pointer" : "cursor-not-allowed opacity-40"
               )}
             >
-              {isPast
-                ? <CheckCircle2 className="w-3 h-3" />
-                : <Icon className="w-3 h-3" />
-              }
+              <div className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200",
+                isActive ? "bg-black text-white shadow-md scale-110" :
+                isPast ? "bg-green-500 text-white" :
+                "bg-gray-200 text-gray-400 group-hover:bg-gray-300"
+              )}>
+                {isPast
+                  ? <CheckCircle2 className="w-3 h-3" />
+                  : <Icon className="w-3 h-3" />
+                }
+              </div>
+              <span className={cn(
+                "text-[10px] font-medium whitespace-nowrap",
+                isActive ? "text-black" : "text-gray-400"
+              )}>
+                {step.label}
+              </span>
             </button>
             {index < steps.length - 1 && (
               <div className={cn(
-                "w-3 h-px transition-colors duration-300",
+                "w-4 h-px self-center mt-0 transition-colors duration-300",
                 isPast ? "bg-green-500" : "bg-gray-200"
               )} />
             )}
@@ -4211,7 +4221,7 @@ ${topicRefContent}` : '');
             </div>
           </div>
 
-          {/* 中间步骤导航（紧凑圆点） */}
+          {/* 中间步骤导航（紧凑圆点 + 文字） */}
           <div className="hidden lg:flex flex-1 justify-center">
             <HeaderStepIndicator
               currentStep={currentStep}
