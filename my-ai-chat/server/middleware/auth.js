@@ -179,12 +179,13 @@ export async function authMiddleware(req, res, next) {
         isNewUser = true;
       } else {
         // 自动创建新用户
-        // 管理员标识：仅当显式配置 ADMIN_PHONE 环境变量时才生效，不再使用硬编码默认值
+        // 超级管理员：ADMIN_PHONE 环境变量匹配 → superadmin
+        // 普通用户：默认 user，可由超级管理员在后台提升为 admin
         const adminPhone = process.env.ADMIN_PHONE;
-        const role = adminPhone && phone === adminPhone ? 'admin' : 'user';
-        // 默认订阅：7天试用期，100K tokens
-        const defaultDays = role === 'admin' ? 99999 : 7;
-        const defaultTokens = role === 'admin' ? 999999999 : 100000;
+        const role = adminPhone && phone === adminPhone ? 'superadmin' : 'user';
+        // 默认订阅
+        const defaultDays = role === 'superadmin' ? 99999 : 7;
+        const defaultTokens = role === 'superadmin' ? 999999999 : 100000;
         result = await db.query(
           `INSERT INTO users (authing_id, email, phone, display_name, avatar_url, role, subscription_days, token_quota)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -224,10 +225,23 @@ export async function authMiddleware(req, res, next) {
   }
 }
 
-// 可选：管理员权限检查
+// 可选：管理员权限检查（admin + superadmin 均可访问）
 export function requireAdmin(req, res, next) {
-  if (req.user?.role !== 'admin') {
+  if (!['admin', 'superadmin'].includes(req.user?.role)) {
     return res.status(403).json({ code: 2002, message: '需要管理员权限', data: null });
   }
   next();
+}
+
+// 可选：超级管理员权限检查（仅 superadmin）
+export function requireSuperadmin(req, res, next) {
+  if (req.user?.role !== 'superadmin') {
+    return res.status(403).json({ code: 2003, message: '需要超级管理员权限', data: null });
+  }
+  next();
+}
+
+// 判断是否为超级管理员
+export function isSuperadmin(req) {
+  return req.user?.role === 'superadmin';
 }

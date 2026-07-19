@@ -15,6 +15,7 @@ interface ApiResponse<T> {
   code: number;
   message: string;
   data: T;
+  isSuperadmin?: boolean;
   pagination?: {
     page: number;
     pageSize: number;
@@ -239,7 +240,7 @@ export async function resetUserTokenUsed(id: string) {
   return res;
 }
 
-export async function preCreateUser(data: { phone: string; subscription_days?: number; token_quota?: number; role?: 'user' | 'admin' }) {
+export async function preCreateUser(data: { phone: string; subscription_days?: number; token_quota?: number; role?: 'user' | 'admin' | 'superadmin' }) {
   const res = await request<any>('/admin/users/precreated', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -260,7 +261,7 @@ export async function getUsageMe() {
   return res;
 }
 
-export async function updateUserRole(id: string, data: { role: 'user' | 'admin' }) {
+export async function updateUserRole(id: string, data: { role: 'user' | 'admin' | 'superadmin' }) {
   const res = await request<any>(`/admin/users/${id}/role`, {
     method: 'PATCH',
     body: JSON.stringify(data),
