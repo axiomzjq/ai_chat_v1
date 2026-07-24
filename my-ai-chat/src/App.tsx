@@ -99,16 +99,24 @@ export const STEP_REFS: StepRefs = {
     'interview/阶段5_结果输出与后续衔接.txt',
   ],
   positioning: [
-    'positioning/客户定位访谈参考手册.txt',
-    'positioning/写作技巧提示词_精华版.txt',
+    'positioning/阶段1_输入读取与路线识别.txt',
+    'positioning/阶段2_初步定位Demo生成与确认.txt',
+    'positioning/阶段3_正式定位报告生成.txt',
+    'positioning/阶段4_终版输出与后续更新.txt',
   ],
   topic: [
-    'topic/选题提示词_基于访谈结果.txt',
-    'topic/写作技巧提示词_精华版.txt',
+    'topic/阶段1_上游承接与模式识别.txt',
+    'topic/阶段2_详细阶段规划与选题扩写.txt',
+    'topic/阶段3_过程质检与结果放行.txt',
+    'topic/阶段4_动态维护、题池治理与自动补货.txt',
+    'topic/阶段5_结果输出、handoff_与复盘回流.txt',
   ],
   copywriting: [
-    'copywriting/客户采访与选题提示词.txt',
-    'copywriting/文案审核提示词.txt',
+    'copywriting/阶段1_上游承接与模式识别.txt',
+    'copywriting/阶段2_题目确认与写作策略装配.txt',
+    'copywriting/阶段3_文案与标题生成.txt',
+    'copywriting/阶段4_质检与修订闭环.txt',
+    'copywriting/阶段5_回写、交付与复盘占位.txt',
   ],
 };
 
@@ -1730,6 +1738,12 @@ export default function App() {
   const getStepRefsContent = async (step: keyof typeof STEP_REFS): Promise<string> => {
     const files = STEP_REFS[step] || [];
     const contents = await Promise.all(files.map(f => getRefContent(f)));
+    return contents.filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
+  };
+
+  /** 批量加载多个文件（静态 refs + 动态输出），返回拼接内容 */
+  const loadPromptFiles = async (paths: string[]): Promise<string> => {
+    const contents = await Promise.all(paths.map(f => getRefContent(f)));
     return contents.filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
   };
 
@@ -3652,17 +3666,32 @@ ${knowledgeContext}` : ""}`,
           : state.infoReport
         : "";
 
-      const positioningRefContent = await getStepRefsContent('positioning');
+      // 加载定位阶段文档 + ToB/ToC 写作技巧库 + 访谈结果
+      const [positioningRefContent, tobtocB, tobtocC] = await Promise.all([
+        getStepRefsContent('positioning'),
+        getRefContent('tobtoc写作技巧库/tobtoc写作技巧库_ToB.txt'),
+        getRefContent('tobtoc写作技巧库/tobtoc写作技巧库_ToC.txt'),
+      ]);
+      const tobtocContent = [tobtocB, tobtocC].filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
 
       const systemPrompt = POSITIONING_SYSTEM_PROMPT
-        + (knowledgeContext ? `
+        + (tobtocContent ? `
 
-请参考以上专业语料提升定位方案的专业度。` : "")
+【ToB/ToC 写作技巧库】：
+${tobtocContent}` : "")
         + (positioningRefContent ? `
 
-【参考文件 · 客户定位访谈参考手册 + 写作技巧提示词】：
+【定位阶段文档】：
 ${positioningRefContent}` : '')
-        + "\n\n请务必学习并结合【访谈报告】、【企业与行业分析报告】和【上传资料内容】中的所有细节，确保定位方案与创始人的精神内核及业务逻辑高度契合。请务必使用 Markdown 格式，并包含详细的内容规划框架（每个阶段不少于20个选题）。";
+        + (interviewSummary ? `
+
+【访谈结果（第一步输出）】：
+${interviewSummary}` : '')
+        + (knowledgeContext ? `
+
+【参考语料】：
+${knowledgeContext}` : "")
+        + "\n\n请务必学习并结合【访谈报告】中的所有细节，确保定位方案与创始人的精神内核及业务逻辑高度契合。请务必使用 Markdown 格式，并包含详细的内容规划框架（每个阶段不少于20个选题）。";
 
       const text = await deepseek.generateText({
         model: deepseek.MODELS.chat,
@@ -3793,11 +3822,32 @@ ${positioningFeedback}
 
       const copywritingRefContent = await getStepRefsContent('copywriting');
 
+      // 截断访谈结果和定位报告
+      const MAX_REPORT_CHARS = 50000;
+      const interviewSummary = state.interviewReport
+        ? state.interviewReport.length > MAX_REPORT_CHARS
+          ? state.interviewReport.slice(0, MAX_REPORT_CHARS) + '\n\n...（内容已截断）'
+          : state.interviewReport
+        : '';
+      const positioningSummary = state.positioningReport
+        ? state.positioningReport.length > MAX_REPORT_CHARS
+          ? state.positioningReport.slice(0, MAX_REPORT_CHARS) + '\n\n...（内容已截断）'
+          : state.positioningReport
+        : '';
+
       const systemPrompt = COPYWRITING_GENERATE_SYSTEM_PROMPT
         + (copywritingRefContent ? `
 
-【参考文件 · 客户采访与选题提示词 + 文案审核提示词】：
+【文案与标题阶段文档】：
 ${copywritingRefContent}` : '')
+        + (interviewSummary ? `
+
+【访谈结果（第一步输出）】：
+${interviewSummary}` : '')
+        + (positioningSummary ? `
+
+【定位报告（第二步输出）】：
+${positioningSummary}` : '')
         + "\n\n请结合【个人背景】、【企业背景】、【定位方案】和【上传资料内容】中的所有细节，创作符合定位且具有高水准的文案。";
 
       cwText = await deepseek.generateText({
@@ -4132,13 +4182,7 @@ ${buildMaterialsContext(state.uploadedMaterials, 50000) || "（暂无）"}`,
       .map(k => `【参考语料 - ${k.title}】：\n${k.content}`)
       .join('\n\n');
 
-    return `请严格基于【定位报告】规划选题。你只能输出纯 JSON，禁止任何其他文字、markdown 标记、代码块标记。
-
-【定位报告】（唯一核心依据）：
-${positioningReport || "（暂无定位报告，请基于通用创始人 IP 逻辑生成）"}
-
-${interviewReport ? `【访谈报告】（背景参考，选题方向以定位报告为准）：
-${interviewReport}` : ''}
+    return `请严格基于【定位报告】和【访谈结果】规划选题。你只能输出纯 JSON，禁止任何其他文字、markdown 标记、代码块标记。
 
 ${knowledgeContext ? `【参考语料】：
 ${knowledgeContext}` : ""}
@@ -4165,13 +4209,31 @@ ${knowledgeContext}` : ""}
         return;
       }
 
-      const topicRefContent = await getStepRefsContent('topic');
+      // 加载选题阶段文档 + ToB/ToC 写作技巧库 + 访谈结果
+      const [topicRefContent, tobtocB, tobtocC] = await Promise.all([
+        getStepRefsContent('topic'),
+        getRefContent('tobtoc写作技巧库/tobtoc写作技巧库_ToB.txt'),
+        getRefContent('tobtoc写作技巧库/tobtoc写作技巧库_ToC.txt'),
+      ]);
+      const tobtocContent = [tobtocB, tobtocC].filter(Boolean).join('\n\n' + '='.repeat(60) + '\n\n');
 
       const systemPrompt = TOPIC_SYSTEM_PROMPT
+        + (tobtocContent ? `
+
+【ToB/ToC 写作技巧库】：
+${tobtocContent}` : "")
         + (topicRefContent ? `
 
-【参考文件 · 选题提示词 + 写作技巧提示词】：
-${topicRefContent}` : '');
+【选题阶段文档】：
+${topicRefContent}` : '')
+        + (state.interviewReport ? `
+
+【访谈结果（第一步输出）】：
+${state.interviewReport.slice(0, 50000)}` : '')
+        + (effectivePositioningReport ? `
+
+【定位报告（第二步输出）】：
+${effectivePositioningReport.slice(0, 50000)}` : '');
 
       console.log('[TopicPool] 开始生成选题池...', {
         hasPositioningReport: !!effectivePositioningReport,

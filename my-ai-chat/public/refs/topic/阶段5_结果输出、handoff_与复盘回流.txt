@@ -1,0 +1,1018 @@
+阶段5_结果输出、handoff 与复盘回流
+
+结果输出与交付结构
+
+【来源：总控】
+
+T09｜标准输出生成
+
+节点目标：按输出模板生成详细规划交付物与机读结构。
+
+输入：topic_pool_bundle、scorecard
+
+输出：detailed_topic_plan、machine_payload
+
+失败/异常条件：输出结构不完整
+
+T10｜下游就绪标记
+
+节点目标：为第四阶段文案智能体写入可调用入口。
+
+输入：detailed_topic_plan
+
+输出：downstream_manifest
+
+失败/异常条件：无 available topic_id 或缺少使用同步规则
+
+14. 与第四阶段文案智能体的衔接规则
+
+• 第四阶段每次成功创建文案任务后，应同步回传 topic_id、used_time、script_request_id、stage_tag、status=in_script/used。
+
+• 若一条题仅进入 in_script 但脚本未通过，可由总控层决定是否回到 current_pool 或保持 in_script。
+
+• used_topic_records 回流后，第三阶段优先执行状态同步，再判断是否需要补货。
+
+• 第三阶段不得向第四阶段下发已归档、已替换、已使用且不可复用的 topic_id。
+
+18. REST / Workflow 接口建议
+
+接口用途
+
+建议路由
+
+主要请求体
+
+关键返回体
+
+创建第三阶段会话
+
+POST /api/stage3/session/create
+
+user_id, mode, upstream_bundle_refs
+
+session_id, mode, stage
+
+生成详细规划
+
+POST /api/stage3/plan/generate
+
+session_id, upstream_input_bundle
+
+draft_topic_pool, review_request
+
+执行质检
+
+POST /api/stage3/review/run
+
+session_id, topic_pool_bundle
+
+review_result, must_fix, scorecard
+
+提交用户反馈
+
+POST /api/stage3/feedback/submit
+
+session_id, feedback_items
+
+maintenance_task_id, affected_topics
+
+同步已使用选题
+
+POST /api/stage3/topic/mark-used
+
+session_id, used_topic_records
+
+updated_topic_pool, refill_hint
+
+执行补货
+
+POST /api/stage3/pool/refill
+
+session_id, stage_id, target_count
+
+replacement_pool, current_pool_count
+
+获取当前规划池
+
+GET /api/stage3/pool/current
+
+session_id, stage_id(optional)
+
+topic_pool_bundle
+
+导出详细规划
+
+GET /api/stage3/export/plan
+
+session_id
+
+human_readable_plan, machine_payload
+
+
+
+19. 技术接入与落地提醒
+
+• 优先把“已使用记录同步”和“规划池状态更新”做成可靠接口，这是第三阶段能否长期可用的关键。
+
+• 尽量不要把第三阶段前台做成单纯大表格展示，应支持筛选、批量反馈、换一批和按阶段查看。
+
+• 总控文档应始终作为最高编排层，角色 Prompt 仅负责各自职责，不应相互覆盖。
+
+• 若后续增加复盘模块，建议直接复用 used_pool 与 usage_notes，不必另起一套状态对象。
+
+【来源：生成】
+
+7. 统一输出协议
+
+生成智能体每一轮输出都应分成“给用户看的规划结果”与“给系统的结构化状态”两层。这样既能保证结果可读，也便于质检与控制层继续判断。
+
+7.1 推荐基础输出格式（技术侧可直接接入）
+
+{  "session_id": "string",  "mode": "full_generation | dynamic_maintenance",  "node_id": "T04 | T05 | U03 | U05",  "generated_objects": {    "stage_topic_plan_bundle": {},    "topic_pool_records": [],    "replacement_bundle": [],    "change_log": []  },  "current_focus": "当前正在扩写或维护的阶段",  "route_consistency_check": {"passed": true, "notes": []},  "pool_action": {"remove_used": [], "refill_needed": false, "refill_count": 0},  "handoff_note": "给质检智能体看的说明",  "self_check": {    "count_ok": true,    "required_fields_ok": true,    "duplicate_risk": false,    "feedback_applied": true  }}
+
+输出硬规则：
+
+• 不得只输出标题列表；必须输出符合字段表要求的详细选题对象。
+
+• 当 mode=dynamic_maintenance 时，默认输出 change_log、topic_patch_records、replacement_bundle，而不是重发整份全量规划。
+
+• pool_action 必须显式说明哪些题因 used 记录被移出，哪些题因反馈被替换，是否已补货。
+
+• handoff_note 必须说明：本轮改了什么、为什么这么改、是否仍有高风险重复或路线漂移。
+
+【来源：输出模板】
+
+第三阶段选题输出模板
+
+内容阶段选题详细规划与动态维护系统｜双智能体版｜适用于首次详细规划与后续动态维护
+
+文档定位：定义第三阶段标准输出结构，确保结果可直接进入文案智能体、排期系统、拍摄/交付流程与后续复盘闭环。
+
+适用模式
+
+核心输入
+
+核心产出
+
+首次详细规划模式动态维护模式
+
+用户基础信息、访谈结果、定位报告、阶段规划、原始资料库/内容资产库、用户反馈、文案智能体已使用选题记录
+
+每阶段≥30条详细选题池、已使用题同步记录、替补补货清单、反馈变更记录、下游 handoff 包
+
+
+
+本模板解决的核心问题• 把第二阶段“阶段选题规划”升级为可直接运营的“详细选题池”，而不是静态附件。• 支持双模式：首次详细生成时产出完整阶段选题包；后续维护时只输出增量变更、替补补货与已使用题同步结果。• 让每条选题具备可直接交给文案智能体使用的字段结构：标题、说明、爆款类型、爆款点、3秒钩子、开头设计、收尾设计、互动/转化引导、平台/形式建议等。• 把用户反馈、已使用选题与补货逻辑写进输出协议，确保第三阶段成为可持续运转的内容规划系统。
+
+
+
+一、文档定位与输出原则
+
+本模板用于把第三阶段双智能体系统的结果整理为“可直接给人用、也可直接给系统调用”的标准输出。它既服务用户与运营团队查看，也服务文案智能体、排期系统、拍摄/交付系统和后续复盘模块。
+
+• 先路线一致，后选题丰富：所有选题必须建立在前两阶段已经确认的 ToB / ToC 主路线、人物定位、内容方向和阶段目标之上。
+
+• 先能用，后包装：模板必须优先保证每条选题可直接进入文案生成与执行环节，而不是只做漂亮标题列表。
+
+• 先保留历史，再更新规划池：已使用选题移出当前规划池，但必须保留在历史记录与复盘链路中，不得永久删除。
+
+• 先显式说明推荐理由，再让用户做选择：用户应一眼看懂为什么推荐这条、适合哪个阶段、偏爆款还是偏转化。
+
+• 首次详细规划要全，动态维护要轻：首次模式输出完整选题池；维护模式只输出增量变更、替补补货和已使用题同步记录。
+
+二、双模式输出总览
+
+模式
+
+触发条件
+
+主要目标
+
+主要输出
+
+initial_plan
+
+第二阶段阶段规划已完成，首次进入第三阶段
+
+把各阶段选题扩展为详细规划，每阶段形成≥30条当前可用选题池
+
+完整选题规划包、阶段摘要、选题池、替补池、下游 handoff 包
+
+feedback_adjust
+
+用户对已有选题给出删除/改写/偏好反馈
+
+基于反馈重写部分选题、替换不合适选题、补充新推荐题
+
+变更记录、更新后规划池、原因说明
+
+used_sync
+
+文案智能体回传已使用选题
+
+将已使用题移出当前规划池、写入历史已用池，并判断是否需要补货
+
+used_topic_patch、availability_update、补货提示
+
+
+
+注：产品实现中可将 feedback_adjust 与 used_sync 视为“动态维护模式”的两个常见子场景。
+
+三、输出总骨架
+
+第三阶段建议统一采用“封面与上下文 + 阶段摘要 + 详细选题池 + 动态维护记录 + 下游 handoff”的结构。首次详细规划模式输出完整选题包；动态维护模式输出增量更新包。
+
+模块
+
+模块名称
+
+核心内容
+
+M00
+
+封面信息与上下文
+
+对象名称、session_id、主路线、版本、资料来源摘要、当前运行模式
+
+M01
+
+阶段规划总览
+
+阶段数量、阶段目标、当前阶段排序、每阶段当前可用题量
+
+M02
+
+关键使用说明
+
+怎么看这份规划、如何给反馈、如何标记已使用题
+
+M03
+
+阶段级摘要卡
+
+每阶段定位、核心任务、推荐内容风格、发布重点
+
+M04
+
+阶段详细选题池
+
+每阶段≥30条详细选题，按统一字段结构输出
+
+M05
+
+替补与补货建议
+
+为每阶段提供替补题、补货逻辑与新增方向
+
+M06
+
+用户反馈与调整记录
+
+删除、改写、替换、屏蔽、不再推荐等反馈结果
+
+M07
+
+已使用选题同步记录
+
+已使用题、使用时间、使用去向、从规划池移出情况
+
+M08
+
+质检与修订记录
+
+生成轮次、问题清单、修订摘要、放行状态
+
+M09
+
+下游 handoff 包
+
+供文案智能体、排期系统、拍摄/交付使用的机读结构说明
+
+
+
+四、首次详细规划模式：完整输出模板
+
+M00｜封面信息与上下文
+
+模块目标：建立当前输出的唯一上下文，避免后续动态维护时出现版本混乱。
+
+应包含的信息：对象名称/称呼、主路线（ToB / ToC）、当前定位母句、session_id、规划生成时间、版本号、输入来源摘要、当前阶段数量、总题量。
+
+写作规则：先写清当前结果基于哪些输入产生；必须标明这是首次详细规划包，而不是动态维护补丁。
+
+M01｜阶段规划总览
+
+模块目标：让用户和下游一眼看懂第三阶段整体结构。
+
+应包含的信息：按阶段列出：阶段名称、阶段目标、内容核心任务、推荐优先级、当前可用题量、替补题量。
+
+写作规则：总览页必须能让用户快速知道：先做哪一阶段、每阶段准备了多少题、目前哪些阶段最值得先动。
+
+M02｜关键使用说明
+
+模块目标：降低用户操作成本，让用户知道如何与系统互动。
+
+应包含的信息：说明如何做三类动作：喜欢/不喜欢、请求改写/换题、标记已使用题；说明系统会如何保留历史记录并自动补货。
+
+写作规则：这部分不是产品说明书，而是本次输出的最小操作指南，建议写得短而清楚。
+
+M03｜阶段级摘要卡
+
+模块目标：为每个阶段提供“为什么这样规划”的解释层。
+
+应包含的信息：每阶段至少包含：阶段目标、该阶段要解决的核心问题、推荐内容风格、推荐平台/形式、偏爆款或偏转化的原因、先发题型建议。
+
+写作规则：摘要卡要能帮助用户理解阶段之间的差异，尤其要体现 ToB / ToC 路线下阶段目标的不同。
+
+建议扩展字段（按产品实现选择启用）：
+
+• 是否已确认可用（approved_flag）
+
+• 是否已被文案智能体调用（used_flag）
+
+• 使用时间 / 使用去向 / 使用版本号
+
+• 用户反馈状态（keep / rewrite / replace / block）
+
+• 替补来源（新生成 / 历史资产回收 / 反馈补货）
+
+• 重复度风险、模板化风险、路线偏移风险
+
+六、阶段详细选题池的推荐呈现方式
+
+为了避免用户面对信息过载，建议不要把 30 条题目直接做成无层级长表。推荐采用“阶段分组 + 优先级分层 + 题目卡片/紧凑表格结合”的展示方式。
+
+层级
+
+推荐展示方式
+
+用途
+
+用途
+
+阶段摘要层
+
+每阶段 1 张摘要卡
+
+先让用户理解该阶段目标和优先级
+
+先让用户理解该阶段目标和优先级
+
+优先推荐层
+
+每阶段 Top 10 详细展示
+
+优先给用户与文案智能体使用
+
+优先给用户与文案智能体使用
+
+平衡补充层
+
+其余题目折叠或紧凑表格呈现
+
+保持丰富度但不过载
+
+保持丰富度但不过载
+
+替补题层
+
+独立小节呈现
+
+供删题、用题后的快速补位
+
+供删题、用题后的快速补位
+
+推荐的前台交互动作• 喜欢这条 / 先保留• 不想讲这个 / 屏蔽• 这条太泛，帮我改得更像我• 再来一条更偏案例型的替补• 这条已经写过了，标记为已使用
+
+推荐的前台交互动作• 喜欢这条 / 先保留• 不想讲这个 / 屏蔽• 这条太泛，帮我改得更像我• 再来一条更偏案例型的替补• 这条已经写过了，标记为已使用
+
+推荐的前台交互动作• 喜欢这条 / 先保留• 不想讲这个 / 屏蔽• 这条太泛，帮我改得更像我• 再来一条更偏案例型的替补• 这条已经写过了，标记为已使用
+
+
+
+
+
+动态维护模式输出红线：
+
+• 不得重新生成完整报告代替增量补丁。
+
+• 不得把已使用题直接删除而不留记录。
+
+• 不得忽略用户明确提出的屏蔽、删题、改方向要求。
+
+• 不得在补货时破坏已确认的主路线、阶段目标和人物表达风格。
+
+池管理原则：
+
+• 当前规划池：只放当前可用且未使用的题。
+
+• 历史已用池：保留已使用题、使用时间、使用去向和后续复盘入口。
+
+• 屏蔽池/归档池：保留用户明确不想讲或长期不再推荐的题。
+
+• 替补池：为每阶段保留可快速补位的新题，不直接占用当前规划池名额。
+
+【最小补充】
+
+• 阶段衔接补充：本阶段负责输出用户可见结果、系统可用结构、handoff 包、版本与批次记录，并建立第四阶段调用与后续复盘入口。
+
+• 判断分支补充：若用户不接受本轮结果，按照反馈类型回阶段4做局部维护，必要时回阶段2重做阶段规划，发现路线跑偏时回阶段1。
+
+• 回流规则补充：第四阶段回传 used_topic_log、abandoned_topic_log、performance_feedback 后，统一从阶段4重新进入动态维护闭环。
+
+handoff、接口与版本记录
+
+【来源：生成】
+
+16. 技术接入与实现提醒
+
+• 建议在接口层区分 full_generation 与 dynamic_maintenance 两种 mode，避免一套 Prompt 承担两种完全不同的责任。
+
+• 建议将 topic_id 作为全阶段唯一主键，并与 stage_id、script_id、feedback_id 形成可追溯关系。
+
+• 建议 used_topic_log 与 user_feedback_patch 直接进入控制层，再由控制层裁剪后传给生成智能体，避免文案智能体直接改主规划。
+
+• 建议每轮局部改动都输出 change_log，便于质检、回退与用户确认。
+
+• 若后续会加入复盘模块，建议从现在就为每条已使用题预留 performance_tag / outcome_tag 字段。
+
+【来源：字段表】
+
+  L｜交付与下游调用字段
+
+模块目标：把第三阶段结果标准化交给文案智能体、排期模块、拍摄模块和后续复盘模块。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+L01
+
+writer_ready_flag
+
+布尔
+
+是
+
+系统/质检
+
+是否可直接送文案智能体。
+
+true
+
+下游入口
+
+L02
+
+writer_input_pack_ref
+
+文本
+
+否
+
+系统
+
+对应文案智能体输入包引用。
+
+PACK-W-20260410-01
+
+调用接口
+
+L03
+
+recommended_topic_set
+
+列表
+
+是
+
+系统
+
+推荐优先给文案智能体调用的题集。
+
+[T-S1-001,T-S1-005]
+
+优先调用
+
+L04
+
+batch_planning_note
+
+多行文本
+
+否
+
+生成
+
+本批次选题的总体说明。
+
+阶段1 先打认知，再逐步推案例
+
+交付说明
+
+L05
+
+shooting_pack_hint
+
+多行文本
+
+否
+
+系统
+
+适合集中拍摄的题目组合建议。
+
+T-S1-002/003/007 可同场景连拍
+
+拍摄协同
+
+L06
+
+calendar_fit_note
+
+多行文本
+
+否
+
+系统
+
+排期建议。
+
+阶段1 建议 2 周内先发完 P1 题
+
+内容运营
+
+L07
+
+handoff_summary
+
+多行文本
+
+否
+
+系统
+
+给下游模块的简短摘要。
+
+当前可用 30 题，其中 P1 为 10 条
+
+交接说明
+
+L08
+
+downstream_manifest
+
+列表
+
+否
+
+系统
+
+下游模块清单。
+
+writer, scheduler, shoot, review
+
+模块调用
+
+L09
+
+topic_export_format
+
+枚举
+
+否
+
+系统
+
+json / table / dashboard_card。
+
+json
+
+接口输出
+
+L10
+
+human_readable_view_flag
+
+布尔
+
+否
+
+系统
+
+是否需生成用户可读版本。
+
+true
+
+前台展示
+
+L11
+
+machine_payload_version
+
+文本
+
+否
+
+系统
+
+机读 payload 版本。
+
+v1.0
+
+接口兼容
+
+L12
+
+delivery_timestamp
+
+日期时间
+
+否
+
+系统
+
+本次对下游放行时间。
+
+2026-04-10 14:35
+
+记录
+
+
+
+  M｜效果回流与复盘字段
+
+模块目标：第三阶段不止出题，还要随着后续使用越来越懂“什么题真的有效”。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+M01
+
+publish_result_id
+
+文本
+
+否
+
+系统
+
+对应发布结果 ID。
+
+PUB-20260413-02
+
+回流映射
+
+M02
+
+topic_id
+
+文本
+
+是
+
+系统
+
+对应选题 ID。
+
+T-S1-004
+
+一题一复盘
+
+M03
+
+content_performance_summary
+
+多行文本
+
+否
+
+复盘
+
+发布结果概览。
+
+完播好、咨询弱
+
+效果判断
+
+M04
+
+viral_outcome_flag
+
+布尔
+
+否
+
+复盘
+
+是否达到预期传播效果。
+
+false
+
+爆款验证
+
+M05
+
+conversion_outcome_flag
+
+布尔
+
+否
+
+复盘
+
+是否达到预期转化效果。
+
+true
+
+转化验证
+
+M06
+
+why_worked_or_failed
+
+多行文本
+
+否
+
+复盘
+
+效果原因分析。
+
+案例够真，但标题不够尖锐
+
+反哺生成
+
+M07
+
+template_upgrade_note
+
+多行文本
+
+否
+
+复盘
+
+是否应把这条沉淀为模板。
+
+收尾设计值得固定
+
+模板回流
+
+M08
+
+do_more_like_this_flag
+
+布尔
+
+否
+
+复盘
+
+是否建议继续补同类题。
+
+true
+
+补货方向
+
+M09
+
+avoid_like_this_flag
+
+布尔
+
+否
+
+复盘
+
+是否建议减少某类题。
+
+false
+
+避坑约束
+
+M10
+
+feedback_back_to_stage3
+
+多行文本
+
+否
+
+复盘
+
+回流第三阶段的策略建议。
+
+阶段2 多补决策型案例题
+
+系统优化
+
+
+
+【来源：输出模板】
+
+M09｜下游 handoff 包
+
+模块目标：确保第三阶段输出能无缝进入第四阶段文案智能体。
+
+应包含的信息：给出 machine-readable 字段说明、当前可投喂的选题列表、被屏蔽和已使用的列表、建议优先调用顺序。
+
+写作规则：handoff 包必须和知识字段结构表保持一致，避免下游智能体重新猜字段。
+
+九、机读输出建议（Machine-readable Payload）
+
+除人读报告外，建议同时输出一份机读结构，供文案智能体、排期系统与后续复盘调用。字段命名可按你现有系统风格调整，但建议保留下列核心对象。
+
+{  "mode": "initial_plan | dynamic_maintenance",  "route": "TobFounder | TocPersonal",  "current_version": "v3.0",  "stage_blocks": [    {      "stage_id": "S1",      "stage_name": "阶段1",      "stage_goal": "...",      "available_topics": [...],      "replacement_topics": [...]    }  ],  "used_topic_records": [...],  "feedback_change_log": [...],  "handoff_ready_topics": [...],  "refill_hint": {    "need_refill": false,    "reason": ""  }}
+
+十、输出质量红线
+
+• 不得把每阶段 30 条写成标题堆砌；每条题必须具备足够支撑文案生成的结构字段。
+
+• 不得只给爆款导向，不给阶段导向；必须说明该题为什么属于当前阶段。
+
+• 不得因为用户删除几条题就让阶段库存快速见底；必须有替补与补货逻辑。
+
+• 不得让已使用题继续停留在当前规划池中制造重复调用。
+
+• 不得忽略路线差异；ToB 与 ToC 的题目结构、爆点来源、转化目标应明显不同。
+
+• 不得生成大面积重复、模板化、仅改措辞不改实质的选题。
+
+推荐交付顺序• 先给《阶段规划总览》与《阶段摘要卡》，帮助用户快速看懂。• 再展开《阶段详细选题池》，优先展示每阶段 Top 10。• 最后附上《替补与补货建议》《已使用选题同步记录》和《handoff 包》。
+
+
+
+附录B｜和第四阶段文案智能体的衔接说明
+
+• 第四阶段调用第三阶段时，应优先读取当前规划池中状态为 approved 且优先级最高的题。
+
+• 一旦某题进入文案生成流程，应先把状态改为 in_script；文案定稿或正式采用后改为 used。
+
+• used 记录必须回写到第三阶段，触发“从当前规划池移出 + 写入历史已用池 + 判断是否补货”。
+
+• 如果第四阶段反馈“这条题不适合写”，不应直接丢弃，而应返回第三阶段走 rewrite_pending 或 replace_pending。
+
+【来源：工作流】
+
+T10｜首版交付与规划池固化（Delivery & Pool Freeze）
+
+节点目标：把通过质检的首版详细规划固化为当前规划池基线，供用户浏览与后续维护模式调用。
+
+触发条件：T08 或 T09 通过后触发。
+
+主执行角色：工作流控制层
+
+输入
+
+核心处理逻辑
+
+输出
+
+planning_bundle 终稿；topic_pool_records 终稿；qa_report
+
+写入规划池基线；生成 delivery_manifest；设置每阶段补货安全阈值和状态监控
+
+planning_bundle；current_topic_pool；delivery_manifest；pool_status=healthy
+
+
+
+失败/异常条件：
+
+• 交付对象写入失败
+
+• topic_status 未初始化
+
+• 历史库与规划池未分离
+
+回退/后续动作：
+
+• 阻断放行直到状态初始化成功
+
+11. 推荐接口设计（REST / Workflow 通用）
+
+接口用途
+
+建议路由
+
+主要请求体
+
+关键返回体
+
+创建第三阶段会话
+
+POST /api/stage3/session/create
+
+user_id, upstream_report_ids, mode
+
+plan_session_id, mode, stage_set, route_type
+
+拉取上游依赖
+
+POST /api/stage3/dependencies/load
+
+plan_session_id
+
+user_profile, route_lock, stage_blueprint, asset_refs
+
+生成首版详细规划
+
+POST /api/stage3/plan/generate
+
+plan_session_id
+
+planning_bundle, topic_pool_records, qa_pending
+
+提交用户反馈
+
+POST /api/stage3/feedback/submit
+
+plan_session_id, feedback_text or structured_patch
+
+feedback_patch, next_action
+
+同步已使用选题
+
+POST /api/stage3/topics/used/sync
+
+plan_session_id, topic_ids, script_task_ids
+
+used_topic_log_patch, refill_check
+
+触发局部补货
+
+POST /api/stage3/refill/run
+
+plan_session_id, stage_id
+
+refill_batch, pool_status
+
+导出当前可用池
+
+GET /api/stage3/pool/current
+
+plan_session_id
+
+current_topic_pool, stage_views, counts
+
+导出历史记录
+
+GET /api/stage3/pool/history
+
+plan_session_id
+
+used_topic_log, archived_topics, change_log
+
+
+
+13. MVP 落地顺序建议
+
+• 先实现 T01–T05：能从第二阶段阶段规划扩写出首版详细选题池。
+
+• 再实现 T07–T10：至少先有重复度预检、正式质检、自动修订和交付固化。
+
+• 接着实现 U03 和 U05：先把已使用选题同步与自动补货跑通，这是第三阶段与文案智能体衔接的生命线。
+
+• 最后实现 U02、U04、U06、U08：再把用户反馈的删改补题和阶段重构提示做完整。
+
+14. 对下一份文件的要求
+
+本文件完成后，下一份最应该撰写的是《第三阶段知识字段结构表》。因为只有先把 topic_pool_records、used_topic_log、feedback_patch、refill_batch 等核心对象的字段级 schema 写清，后续的输出模板、质检标准与双智能体 Prompt 才不会打架。
+
+下一步建议• 优先撰写《第三阶段知识字段结构表》：先定字段，再定输出、评分与 Prompt。• 字段表中必须把每条详细选题的结构字段、状态字段、反馈字段、已使用字段、补货字段一次性定清。• 后续所有第三阶段文件都应严格承接本工作流文档的节点、状态与对象命名。
+
+
+
+【最小补充】
+
+• 阶段衔接补充：本阶段负责输出用户可见结果、系统可用结构、handoff 包、版本与批次记录，并建立第四阶段调用与后续复盘入口。
+
+• 判断分支补充：若用户不接受本轮结果，按照反馈类型回阶段4做局部维护，必要时回阶段2重做阶段规划，发现路线跑偏时回阶段1。
+
+• 回流规则补充：第四阶段回传 used_topic_log、abandoned_topic_log、performance_feedback 后，统一从阶段4重新进入动态维护闭环。
+

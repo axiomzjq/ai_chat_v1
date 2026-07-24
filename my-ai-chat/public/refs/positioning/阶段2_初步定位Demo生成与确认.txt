@@ -1,0 +1,66 @@
+阶段2_初步定位Demo生成与确认
+
+
+
+Demo 生成前的固定输入对象
+
+必须读取：structured_interview_report、route_result、skill_library_source、skill_library_status、skill_library_route_match、primary_expression_arena、main_route_expression_rule、secondary_route_usage_note、mixed_expression_risk。
+
+必须继承阶段1已锁定结果，不得在 Demo 阶段重新发明新路线；如 route_type 仍不清晰，只能回流阶段1补 route_evidence。
+
+Demo 阶段默认服从“当前用户请求 > 结构化访谈结果 > route_type 与 route 识别结果 > 对应路线技巧库 > 模块规则 > 报告输出模板 > 通用兜底写法”的优先级。
+
+3 版初步定位 Demo 生成规则
+
+必须一次性生成 3 版 Demo，且 3 版之间必须具备明确差异，不能只是同一句话换几个词。
+
+3 版 Demo 必须都服从同一条主路线，但可在人物主线、首批受众切入、表达方式、栏目重心、平台侧重上做差异化展开。
+
+若主路线为 ToB，则 3 版 Demo 必须体现 ToB 技巧库逻辑；若主路线为 ToC，则 3 版 Demo 必须体现 ToC 技巧库逻辑。
+
+每版 Demo 至少包含：demo_id、route_type、primary_expression_arena、定位一句话、价值主张一句话、最强身份标签、最大反差点、首批最核心成交对象、次级可覆盖对象、当前不优先服务对象、核心内容主线、首选平台、首发形式建议、最不建议走的方向。
+
+每版 Demo 必须明确：为什么这版适合当前用户、与另外两版的关键区别是什么、后续若锁定这版将带来什么内容与转化路径。
+
+用户操作分支
+
+直接选一版：用户可直接锁定某一版 Demo，并进入正式报告生成。
+
+修改标签：用户可针对人物标签、受众范围、主线表达、平台建议等做定向修改，系统只改被指出的部分。
+
+融合两版：用户可选择两版 Demo 的不同优点，系统按“主路线不变、主场清晰、受众不打架、平台不冲突”的原则生成融合版。
+
+重生 3 版：若用户认为 3 版都不对，可在保留 route_result 的前提下重生一轮 Demo；若问题本质是路线模糊，则回流阶段1。
+
+锁定输出对象
+
+用户确认后，必须冻结：approved_demo、approved_route_context、approved_expression_rule、approved_target_audience_scope。
+
+approved_route_context 至少包含：route_type、route_confidence、route_evidence、primary_expression_arena、main_route_expression_rule、skill_library_source、skill_library_status、skill_library_fallback_note。
+
+approved_target_audience_scope 至少包含：首批最核心成交对象、次级可覆盖对象、当前不优先服务对象、可直接对外表达的人群收窄版本。
+
+approved_expression_rule 至少包含：主路线表达主场、次路线只作何种背书、哪些内容可讲、哪些内容要谨慎混讲。
+
+阶段2回流规则
+
+若用户指出 Demo 的问题本质是“路线不对”或“表达主场不对”，则回流阶段1重新读取上下文并补 route 判断。
+
+若用户只对标签、受众、切口、平台偏好不满意，则留在阶段2做局部修改或融合，不直接跳到阶段3。
+
+只有在 approved_demo 与 approved_route_context 被明确锁定后，阶段3 才能开始正式写报告。
+
+阶段2最小交付对象
+
+3 张可对比的 Demo 卡片
+
+用户操作分支记录：select / modify / merge / regenerate
+
+锁定后的 approved_demo
+
+锁定后的 approved_route_context
+
+锁定后的 approved_expression_rule
+
+锁定后的 approved_target_audience_scope
+

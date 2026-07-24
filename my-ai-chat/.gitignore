@@ -32,3 +32,4 @@ server/.env
 
 # Source zip archives (extracted contents are tracked)
 RAG_DOCS/*.zip
+创始人ip定制文档.zip

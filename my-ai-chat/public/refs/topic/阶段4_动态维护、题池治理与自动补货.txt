@@ -1,0 +1,1558 @@
+阶段4_动态维护、题池治理与自动补货
+
+动态维护与题池治理
+
+【来源：总控】
+
+T08｜题池归档
+
+节点目标：把通过质检的规划池写入当前池与替补池。
+
+输入：revised_topic_pool
+
+输出：topic_pool_bundle
+
+失败/异常条件：归档时 topic_status 缺失
+
+11. 动态维护模式节点设计（U01–U08）
+
+U01｜维护触发识别
+
+节点目标：识别本轮是用户反馈触发、已使用记录触发、还是低库存补货触发。
+
+U02｜历史池加载
+
+节点目标：加载 current_pool、used_pool、backup_pool 及最近一次反馈记录。
+
+U03｜反馈/使用差异计算
+
+节点目标：比对哪些题要删、要改、要补、要移出、要替换。
+
+U04｜局部生成与补货
+
+节点目标：只对受影响阶段执行删改补替；若 current_pool 低于阈值则自动补货。
+
+U05｜局部质检
+
+节点目标：检查动态维护后的局部池是否仍满足路线、数量与完整度要求。
+
+U06｜状态同步
+
+节点目标：把 used 状态、replaced 状态、archived 状态和新增 planned 状态写回。
+
+U07｜rerun 提示判断
+
+节点目标：若用户反馈或大量补货导致阶段逻辑变化，生成 rerun_hint 供上游决定是否需要重跑。
+
+U08｜维护结果回执
+
+节点目标：输出 change_log、topic_patch_bundle、updated_topic_pool。
+
+13. 选题生命周期与池管理规则
+
+• 规划池 ≠ 历史库。当前规划池中的选题可被删改补替，但历史已使用题永远保留。
+
+• topic_status=used 时，只从 current_pool 中移出，同时写入 used_pool，并记录 used_time、used_by_stage4、script_id、usage_notes。
+
+• 当某阶段 current_pool 数量低于预设安全阈值（例如 <20）时，自动触发 refill。
+
+• 替补题优先从 backup_pool 提取；若 backup_pool 也不足，则生成智能体新补题。
+
+• 反馈删除题可进入 archived_pool 或 replaced_pool，视是否彻底作废还是被替代。
+
+• 不得因为用户不喜欢某条题就删除其全部历史痕迹，必须保留 feedback_reason 和 remove_action。
+
+16.2 动态维护模式
+
+• 先读取 feedback_log、used_topic_records 和 existing_topic_pool。
+
+• 判断本轮属于删题、改题、补题、替换、补货哪一种维护任务。
+
+• 只对受影响的阶段或选题做局部维护。
+
+• 局部质检通过后再写回池状态，不通过则继续局部修订。
+
+【来源：工作流】
+
+U01｜维护会话初始化（Maintenance Init）
+
+节点目标：载入当前规划池、历史已用池、最近用户反馈与最近一次文案使用记录。
+
+触发条件：用户提出删改补题需求，或文案智能体回传 used_topic_patch 时触发。
+
+主执行角色：工作流控制层
+
+输入
+
+核心处理逻辑
+
+输出
+
+current_topic_pool；used_topic_log；feedback_history；planning_bundle 基线
+
+初始化 plan_mode=plan_maintenance；装配本轮维护目标
+
+maintenance_context
+
+
+
+失败/异常条件：
+
+• 缺少当前规划池
+
+• 历史状态损坏
+
+回退/后续动作：
+
+• 阻断并要求恢复基线快照
+
+U02｜用户反馈解析（Feedback Parse）
+
+节点目标：把用户的自然语言反馈转成结构化 patch，区分删除、改写、替换、禁区、偏好变化等类型。
+
+触发条件：维护模式中收到用户意见时触发。
+
+主执行角色：质检智能体
+
+输入
+
+核心处理逻辑
+
+输出
+
+用户原话反馈；maintenance_context
+
+解析 feedback_type、target_topic、replacement_direction、ban_reason、preference_shift
+
+feedback_patch
+
+
+
+• 反馈过泛无法执行
+
+• 目标题不明确
+
+• 返回 clarify_needed 或建议用户从阶段/标题/类型维度缩小范围
+
+U03｜已使用选题同步（Used Topic Sync）
+
+节点目标：接收文案智能体已使用选题记录，把相关选题从当前规划池移出并写入历史记录。
+
+触发条件：收到 used_topic_patch 时触发。
+
+输入
+
+核心处理逻辑
+
+输出
+
+used_topic_patch；current_topic_pool；used_topic_log
+
+更新 topic_status=used 或 in_script；从当前规划池视图中移出；写入 used_topic_log
+
+current_topic_pool patch；used_topic_log patch；pool_status 更新
+
+
+
+• 已使用题不存在于当前池
+
+• topic_id 冲突
+
+• 记录异常并触发人工排错或重建索引
+
+U04｜局部删改补题（Local Mutation）
+
+节点目标：根据 feedback_patch 对当前规划池执行局部删除、改写、替换与新增替补题。
+
+触发条件：U02 之后触发。
+
+主执行角色：生成智能体
+
+输入
+
+核心处理逻辑
+
+输出
+
+feedback_patch；current_topic_pool；stage_asset_packet 或历史资产
+
+删除不合适题；改写指定题；生成 replacement_topics；更新状态与原因字段
+
+topic_pool_patch；replacement_topics；change_log 初稿
+
+
+
+• 改写后仍与用户禁区冲突
+
+• 补题方向与路线不一致
+
+• 交由质检智能体做局部校验
+
+U05｜低库存检测与自动补货（Low Stock Detection & Refill）
+
+节点目标：当某阶段可用题目低于安全阈值时，自动补足到设定水平。
+
+触发条件：U03/U04 后自动检查。
+
+主执行角色：质检智能体（检测）+ 生成智能体（补货）
+
+输入
+
+核心处理逻辑
+
+输出
+
+current_topic_pool；pool_threshold；反馈偏好；used_topic_log
+
+检测每阶段剩余 planned/approved 数量；触发 refill_batch；保持阶段内题型分布平衡
+
+refill_batch；pool_status=healthy|low_stock|refill_needed
+
+
+
+• 补货后仍不足
+
+• 补货题与已用题高度相似
+
+• 继续补货或标记 low_confidence，并在后续提醒需上游补素材
+
+U06｜局部质检与去重（Patch QA & Dedup）
+
+节点目标：对本轮删改补题和补货结果做局部质检，确保没有新引入重复、跑偏和字段缺漏。
+
+触发条件：U04/U05 后触发。
+
+输入
+
+核心处理逻辑
+
+输出
+
+topic_pool_patch；replacement_topics；refill_batch；评分标准
+
+检查反馈是否被正确执行；检查是否重复、是否仍像用户本人、是否保持路线一致
+
+patch_qa_report；review_result
+
+
+
+• 用户要求未落实
+
+• 重复度上升
+
+• 新题与已用题撞车
+
+• 返回生成智能体局部继续修订
+
+U07｜维护结果归档与提示（Archive & Notify）
+
+节点目标：把本轮维护结果落库，并输出给用户和下游系统的更新摘要。
+
+触发条件：U06 通过后触发。
+
+输入
+
+核心处理逻辑
+
+输出
+
+current_topic_pool 更新版；used_topic_log；change_log；patch_qa_report
+
+写入 change_log；输出用户可读更新摘要；更新补货阈值监控
+
+maintenance_result_bundle；change_log；pool_status
+
+
+
+• 写入失败
+
+• 状态未同步到前台视图
+
+• 阻断并重试写入
+
+U08｜阶段重构提示（Rebuild Hint）
+
+节点目标：若多次维护后仍无法维持质量，或用户反馈反映主路线/阶段逻辑已变，则生成重构提示。
+
+触发条件：U06 连续失败或检测到结构性变化时触发。
+
+主执行角色：质检智能体 + 控制层
+
+输入
+
+核心处理逻辑
+
+输出
+
+patch_qa_report；feedback_history；used_topic_log；pool_status
+
+判断问题是否属于第三阶段可修范围；若不属于，则输出 rebuild_hint 或 stage2_rerun_hint
+
+rebuild_hint；stage2_rerun_hint
+
+
+
+• 误把普通删题当成结构性变化
+
+• 滥触发重构
+
+• 要求至少两次连续失败或关键上游字段变化才可触发
+
+10. 选题生命周期与池管理规则
+
+• planned：已规划、未确认、仍在当前可用池中。
+
+• approved：用户或系统确认可优先使用，仍留在当前池中。
+
+• in_script：已送文案智能体生成文案，默认不再作为高优先推荐，但可视业务规则决定是否暂时保留。
+
+• used：文案已生成或已被消耗；必须从当前规划池移出，但保留到历史记录中。
+
+• replaced：被用户或系统替补选题替换；原题进入历史记录，不得直接消失。
+
+• archived：明确不再推荐或已因路线变化失效；保留原因说明。
+
+硬规则：规划池 ≠ 历史库• 规划池用于当前可执行、可继续推荐的选题；历史库用于记录所有曾被生成、改写、使用、替换或归档的选题。• 已使用选题只从规划池移出，不从历史库删除；历史记录必须保留使用时间、去向、对应脚本或备注。• 任何删题、替换、补货动作都要进入 change_log，保证后续复盘和下游查询可追溯。
+
+
+
+【最小补充】
+
+• 阶段衔接补充：本阶段输出 topic_pool_patch、used_topic_log、replacement_topics、refill_batch、change_log，并把当前可用池状态回写到系统主记录。
+
+• 判断分支补充：若反馈未处理完、已使用题未移出、题池低于阈值、补货失败或维护后仍存在明显重复与路线漂移，则不得直接进入阶段5。
+
+• 回流规则补充：若局部维护后发现阶段逻辑需要重构，则回阶段2；若发现上游路线与表达主场失效，则回阶段1。
+
+反馈处理、已使用同步与补货
+
+【来源：生成】
+
+9.2 U03｜用户反馈改题 Prompt
+
+用于 dynamic_maintenance 模式下，根据用户明确反馈执行局部删改补。
+
+你当前的任务是：读取 user_feedback_patch，只针对被影响阶段和被影响选题执行局部删改补。要求：1. 明确哪些题要删除、哪些题要改写、哪些题要新补；2. 解释每个动作与用户反馈的对应关系；3. 若用户反馈与主路线或阶段目标冲突，保留路线一致性并给出更稳的替代方案；4. 修改后重新检查当前阶段可用题量是否低于阈值。
+
+9.3 U04｜已使用题同步 Prompt
+
+用于接收文案智能体回流，把已使用题从当前规划池移出，并决定是否补货。
+
+你当前的任务是：读取 used_topic_log，把已使用 topic_id 从当前可规划选题池中移出，写入历史已用池，并根据 pool_health_report 判断是否需要补货。要求：1. 只移出当前规划池，不删除历史记录；2. 明确记录 topic_id、使用时间、script_id、所属阶段；3. 若某阶段当前可用题量低于安全阈值，生成 replacement_bundle；4. 替补题必须沿用原阶段逻辑与主路线，不得漂移。
+
+9.4 U05｜补货生成 Prompt
+
+用于规划池低于阈值、用户删除过多或质检要求补货时生成替补题。
+
+你当前的任务是：为【当前阶段】补充替补题，恢复题池健康度。要求：1. 先判断缺的是哪类题：爆款优先、转化优先、信任优先、教育优先；2. 新补题必须和现有题池形成互补，而不是重复；3. 新补题必须保留来源依据与适配原因；4. 补货后输出 replacement_bundle 与 updated_pool_count。
+
+11. 用户反馈处理规则
+
+11.1 可接受的典型反馈
+
+• 这条不像我
+
+• 这条太泛
+
+• 这个方向我不想讲
+
+• 再多来点案例类
+
+• 再多来点能带咨询的
+
+• 这条适合图文，不要视频
+
+• 这条我已经讲过了
+
+• 不要太强卖货感
+
+11.2 反馈动作映射
+
+反馈类型
+
+标准动作
+
+说明
+
+不像我 / 口吻不对
+
+rewrite_same_slot
+
+保留阶段目标，改写为更像其表达风格与经历背景的题。
+
+太泛 / 太像模板
+
+deepen_or_reframe
+
+改成更具体的场景、案例、人物关系或业务场景。
+
+不想讲 / 有边界
+
+remove_or_archive
+
+从当前规划池移出，可归档，不再继续推荐。
+
+多来点案例类 / 多来点转化类
+
+rebalance_topic_mix
+
+调整该阶段题型比例，并补相应替补题。
+
+已经讲过 / 已用于文案
+
+mark_used_and_refill
+
+改状态为 used，并根据阈值触发补货。
+
+
+
+12. 已使用题同步与题池维护规则
+
+• 已使用题必须从当前规划池中移出，避免后续继续推荐给同一用户。
+
+• 已使用题必须写入历史已用池，至少保留 topic_id、title、stage_id、used_at、script_id、script_status。
+
+• 若已使用题仍有复盘价值，可保留复盘入口和表现标签，但不得回到 current_pool 状态。
+
+• 当某阶段 current_pool_count 低于 safety_threshold 时，生成智能体必须执行补货。
+
+• 补货优先补“当前阶段仍需要、但库存不足”的题型，而不是盲目补最容易写的题。
+
+【最小补充】
+
+• 阶段衔接补充：本阶段输出 topic_pool_patch、used_topic_log、replacement_topics、refill_batch、change_log，并把当前可用池状态回写到系统主记录。
+
+• 判断分支补充：若反馈未处理完、已使用题未移出、题池低于阈值、补货失败或维护后仍存在明显重复与路线漂移，则不得直接进入阶段5。
+
+• 回流规则补充：若局部维护后发现阶段逻辑需要重构，则回阶段2；若发现上游路线与表达主场失效，则回阶段1。
+
+池状态、生命周期与维护补丁
+
+【来源：字段表】
+
+  G｜选题生命周期与题池管理字段
+
+模块目标：把“生成出来的题”和“当前还可用的题”分开管理。第三阶段必须是题池系统，不是一次性清单。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+G01
+
+pool_type
+
+枚举
+
+是
+
+系统
+
+current_pool / reserve_pool / used_pool / archive_pool。
+
+current_pool
+
+池归属
+
+G02
+
+candidate_status
+
+枚举
+
+是
+
+系统
+
+planned / approved / in_script / used / replaced / archived。
+
+approved
+
+生命周期
+
+G03
+
+status_changed_at
+
+日期时间
+
+是
+
+系统
+
+最近一次状态变更时间。
+
+2026-04-10 11:03
+
+审计
+
+G04
+
+status_change_reason
+
+多行文本
+
+否
+
+系统/反馈
+
+状态变更原因。
+
+用户选择先写这条，送入文案智能体
+
+操作记录
+
+G05
+
+occupy_flag
+
+布尔
+
+是
+
+系统
+
+是否已被文案智能体占用。
+
+false
+
+防重复调用
+
+G06
+
+reserved_by_script_id
+
+文本
+
+否
+
+系统
+
+若已送文案，对应 script 任务 ID。
+
+SC-20260410-03
+
+调用追踪
+
+G07
+
+used_at
+
+日期时间
+
+否
+
+系统
+
+被正式使用的时间。
+
+2026-04-11 08:10
+
+历史记录
+
+G08
+
+replaced_by_topic_id
+
+文本
+
+否
+
+系统
+
+若被替换，替补题 ID。
+
+T-S1-031
+
+替补映射
+
+G09
+
+replacement_source
+
+枚举
+
+否
+
+系统
+
+user_feedback / auto_refill / manual_seed / qc_regen。
+
+auto_refill
+
+替补来源
+
+G10
+
+archive_reason
+
+多行文本
+
+否
+
+系统/反馈
+
+归档原因。
+
+与已用题重复，不再推荐
+
+治理与复盘
+
+G11
+
+remaining_pool_rank
+
+数值
+
+否
+
+系统
+
+当前池内剩余排序。
+
+5
+
+池管理
+
+G12
+
+eligible_for_refill
+
+布尔
+
+是
+
+系统
+
+是否计入补货阈值判断。
+
+true
+
+自动补货
+
+G13
+
+history_keep_flag
+
+布尔
+
+是
+
+系统
+
+历史记录是否保留，默认 true。
+
+true
+
+历史库保留
+
+G14
+
+do_not_delete_rule_note
+
+多行文本
+
+是
+
+系统
+
+规则说明：used 不得物理删除。
+
+已使用题仅移出规划池
+
+治理红线
+
+
+
+  H｜用户反馈与动态调整字段
+
+模块目标：把用户口头意见从“聊天话”变成能驱动系统删、改、补、换的结构化信号。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+H01
+
+feedback_id
+
+文本
+
+是
+
+系统
+
+反馈唯一 ID。
+
+FB-20260410-04
+
+反馈追踪
+
+H02
+
+topic_id
+
+文本
+
+是
+
+系统
+
+被反馈影响的题目 ID。
+
+T-S1-006
+
+映射对象
+
+H03
+
+feedback_type
+
+枚举
+
+是
+
+用户
+
+delete / rewrite / generate_more / too_generic / not_like_me / already_said / change_direction。
+
+rewrite
+
+动作分类
+
+H04
+
+feedback_text_raw
+
+多行文本
+
+是
+
+用户
+
+用户原始反馈。
+
+这个方向可以，但别讲得太像培训。
+
+原话保留
+
+H05
+
+feedback_intent_normalized
+
+多行文本
+
+是
+
+系统
+
+系统归一化后的意图。
+
+保留方法论，但降低教学腔
+
+可执行指令
+
+H06
+
+preference_signal
+
+多行文本
+
+否
+
+系统
+
+提炼出的长期偏好。
+
+用户偏好案例切口，不爱空讲方法
+
+长期个性化
+
+H07
+
+hard_block_flag
+
+布尔
+
+否
+
+系统
+
+是否属于禁止再推方向。
+
+false
+
+禁推管理
+
+H08
+
+rewrite_scope
+
+枚举
+
+否
+
+系统
+
+title_only / structure / angle / route / full_regen。
+
+structure
+
+修订范围
+
+H09
+
+regen_count
+
+数值
+
+否
+
+系统
+
+该题因反馈已重生次数。
+
+1
+
+防无限重写
+
+H10
+
+feedback_applied_flag
+
+布尔
+
+是
+
+系统/质检
+
+是否已执行。
+
+true
+
+执行检查
+
+H11
+
+feedback_applied_note
+
+多行文本
+
+否
+
+系统
+
+如何执行了该反馈。
+
+把培训口吻改为经验判断口吻
+
+回执说明
+
+H12
+
+carry_forward_to_future
+
+布尔
+
+否
+
+系统
+
+该偏好是否应影响后续新题。
+
+true
+
+持续学习
+
+H13
+
+future_generation_constraint
+
+多行文本
+
+否
+
+系统
+
+后续出题约束。
+
+减少“方法论 5 点”式标题
+
+生成约束
+
+H14
+
+needs_user_reconfirm
+
+布尔
+
+否
+
+系统
+
+是否需用户再确认。
+
+false
+
+交互策略
+
+H15
+
+feedback_timestamp
+
+日期时间
+
+是
+
+系统
+
+反馈时间。
+
+2026-04-10 11:08
+
+审计
+
+
+
+  I｜文案智能体已使用选题同步字段
+
+模块目标：把文案智能体的“已使用题”标准化回写第三阶段，而不是靠人工记忆删除。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+I01
+
+script_task_id
+
+文本
+
+是
+
+系统
+
+文案智能体任务 ID。
+
+SCRIPT-093
+
+双系统衔接
+
+I02
+
+topic_id
+
+文本
+
+是
+
+系统
+
+被调用的选题 ID。
+
+T-S1-004
+
+使用映射
+
+I03
+
+script_request_time
+
+日期时间
+
+是
+
+系统
+
+送入文案智能体时间。
+
+2026-04-10 13:20
+
+占用时间
+
+I04
+
+script_generation_status
+
+枚举
+
+是
+
+系统
+
+requested / generated / cancelled / failed。
+
+generated
+
+同步状态
+
+I05
+
+topic_moved_out_flag
+
+布尔
+
+是
+
+系统
+
+是否已从当前规划池移出。
+
+true
+
+池更新
+
+I06
+
+move_out_reason
+
+多行文本
+
+是
+
+系统
+
+移出原因。
+
+已进入文案生成流程，避免重复推荐
+
+规则说明
+
+I07
+
+history_log_written
+
+布尔
+
+是
+
+系统
+
+是否已写入历史池。
+
+true
+
+历史保留
+
+I08
+
+replace_needed_flag
+
+布尔
+
+是
+
+系统
+
+该使用记录是否触发补货。
+
+true
+
+补货联动
+
+I09
+
+replacement_topic_id
+
+文本
+
+否
+
+系统
+
+若已补替，对应新题 ID。
+
+T-S1-032
+
+替补映射
+
+I10
+
+script_output_ref
+
+文本
+
+否
+
+系统
+
+脚本结果引用 ID 或链接。
+
+DOC-SCRIPT-093
+
+后续复盘
+
+I11
+
+publish_status_hint
+
+枚举
+
+否
+
+系统
+
+drafted / published / dropped。
+
+drafted
+
+复盘准备
+
+I12
+
+used_sync_note
+
+多行文本
+
+否
+
+系统
+
+同步说明。
+
+该题已用，不再在 current_pool 中展示
+
+操作记录
+
+
+
+  J｜替补补货与自动扩充字段
+
+模块目标：保证每阶段选题池长期维持安全容量，而不是越用越少。
+
+字段ID
+
+字段名称
+
+类型
+
+必填
+
+来源
+
+字段说明
+
+示例
+
+后续用途
+
+J01
+
+refill_trigger_flag
+
+布尔
+
+是
+
+系统
+
+是否触发补货。
+
+true
+
+补货开关
+
+J02
+
+refill_trigger_reason
+
+多行文本
+
+是
+
+系统
+
+触发原因。
+
+当前阶段剩余 23 条，低于阈值 24
+
+触发说明
+
+J03
+
+refill_target_count
+
+数值
+
+是
+
+系统
+
+补货目标数量。
+
+30
+
+补货目标
+
+J04
+
+refill_needed_count
+
+数值
+
+是
+
+系统
+
+本次需补多少条。
+
+7
+
+补货规模
+
+J05
+
+refill_source_type
+
+枚举
+
+是
+
+系统/生成
+
+from_stage_seed / from_assets / from_feedback_variation / qc_regen。
+
+from_assets
+
+来源管理
+
+J06
+
+replacement_strategy
+
+枚举
+
+是
+
+系统
+
+close_variant / new_angle / new_platform_variant / reserve_activation。
+
+new_angle
+
+替补策略
+
+J07
+
+anti_duplication_rule
+
+多行文本
+
+是
+
+质检
+
+补货时必须遵守的去重规则。
+
+与已用/已规划题相似度过高则退回
+
+反同质化
+
+J08
+
+refill_batch_id
+
+文本
+
+否
+
+系统
+
+补货批次 ID。
+
+RF-20260410-02
+
+批次追踪
+
+J09
+
+refill_quality_note
+
+多行文本
+
+否
+
+质检
+
+补货题整体质量备注。
+
+新补题中 2 条仍偏像旧题，需要重生
+
+质检说明
+
+J10
+
+reserve_pool_count
+
+数值
+
+否
+
+系统
+
+当前替补池数量。
+
+8
+
+库存管理
+
+J11
+
+expansion_direction_note
+
+多行文本
+
+否
+
+系统/反馈
+
+补货优先方向。
+
+优先补案例型和误区型
+
+动态偏置
+
+J12
+
+refill_completed_flag
+
+布尔
+
+是
+
+系统
+
+补货是否完成。
+
+false
+
+流程推进
+
+
+
+7. 标准状态字典（建议）
+
+对象
+
+建议状态
+
+说明
+
+阶段状态
+
+active / paused / completed / archived
+
+控制一个阶段当前是否继续补题或仅保留历史。
+
+选题生命周期
+
+planned / approved / in_script / used / replaced / archived
+
+第三阶段最核心状态集合。
+
+质检结果
+
+pass / revise / refill / partial_regen / reject
+
+驱动生成智能体和控制层后续动作。
+
+补货状态
+
+waiting / triggered / generating / reviewed / completed
+
+适合前后端显示补货进度。
+
+文案同步状态
+
+requested / generated / cancelled / failed
+
+承接文案智能体回流。
+
+
+
+8. 替换使用说明
+
+• 本文件可直接作为《第三阶段知识字段结构表》的正式版本使用。
+
+• 若后续继续撰写《第三阶段选题输出模板》《第三阶段评分与质检标准》《第三阶段生成智能体提示词文档》，建议都以本字段表为唯一 schema 依据，避免不同文件对 topic_id、candidate_status、feedback_type、replace_needed_flag 等字段定义不一致。
+
+• 若未来你的第三阶段继续扩展到排期系统、复盘系统或团队协作系统，可在 M 模块和 N 模块基础上继续扩展，而不建议改动 D / G / H / I 四个核心模块的主结构。
+
+【来源：输出模板】
+
+M05｜替补与补货建议
+
+模块目标：保证选题池长期可用，而不是一次性消耗。
+
+应包含的信息：为每阶段给出 5–10 条替补题方向或替补题，并说明触发补货的条件：已使用题过多、用户删题过多、某阶段库存低于阈值等。
+
+写作规则：补货不应重新推翻整阶段逻辑，而应在原阶段目标和路线不变前提下补充新题。
+
+M06｜用户反馈与调整记录
+
+模块目标：沉淀用户偏好，让系统越用越准。
+
+应包含的信息：记录用户对题目的删除、改写、替换、屏蔽原因；记录用户偏好的内容类型、表达方式、不想讲的话题。
+
+写作规则：建议同时输出“本轮新增偏好总结”，供后续生成智能体与质检智能体调用。
+
+M07｜已使用选题同步记录
+
+模块目标：把文案智能体已用选题从当前规划池中移出，并保留历史链路。
+
+应包含的信息：至少记录：topic_id、选题标题、使用时间、使用去向（脚本/平台/项目）、当前状态、是否需要补货。
+
+写作规则：本模块的核心原则是：移出规划池，不删除历史记录。
+
+七、动态维护模式：增量更新模板
+
+动态维护模式不重复输出整份完整规划，而是只输出本轮变化项。建议统一采用“变更摘要 + 反馈执行结果 + 当前规划池变化 + 补货结果 + handoff 更新”的结构。
+
+模块
+
+模块名称
+
+核心内容
+
+U00
+
+更新上下文
+
+本轮触发原因：用户反馈 / 已使用题同步 / 自动补货 / 混合触发
+
+U01
+
+变更摘要
+
+本轮新增、删除、改写、替换、屏蔽、补货的数量和重点
+
+U02
+
+反馈执行结果
+
+逐条列出用户反馈如何被执行，哪些题被删除、改写或替换
+
+U03
+
+已使用题同步结果
+
+哪些题被标记为 used、从哪一池移出、是否触发补货
+
+U04
+
+补货与替补结果
+
+新补进哪些题、补到哪个阶段、为什么补这些
+
+U05
+
+更新后的 handoff 结果
+
+当前仍可供文案智能体调用的题目列表与版本说明
+
+
+
+八、选题生命周期与池管理输出规则
+
+状态
+
+状态码
+
+含义
+
+对外输出要求
+
+待规划
+
+planned
+
+系统已生成，但尚未确认是否进入当前可用规划池
+
+可出现在内部列表，不建议优先展示给用户
+
+已确认可用
+
+approved
+
+当前规划池中的正式可用题
+
+应在阶段详细题池中正常展示
+
+待改写
+
+rewrite_pending
+
+用户或质检要求重写
+
+应留在变更记录中，不应继续推送下游
+
+待替换
+
+replace_pending
+
+用户明确不想要原题，需要新题替补
+
+应展示替补进度与替代方向
+
+已使用
+
+used
+
+已被文案智能体或人工文案流程实际使用
+
+从当前规划池移出，写入历史已用池
+
+已归档
+
+archived
+
+长期不再推荐，但保留历史记录
+
+仅在历史池中保留
+
+
+
+【最小补充】
+
+• 阶段衔接补充：本阶段输出 topic_pool_patch、used_topic_log、replacement_topics、refill_batch、change_log，并把当前可用池状态回写到系统主记录。
+
+• 判断分支补充：若反馈未处理完、已使用题未移出、题池低于阈值、补货失败或维护后仍存在明显重复与路线漂移，则不得直接进入阶段5。
+
+• 回流规则补充：若局部维护后发现阶段逻辑需要重构，则回阶段2；若发现上游路线与表达主场失效，则回阶段1。
+

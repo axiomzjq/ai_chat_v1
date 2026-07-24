@@ -1,0 +1,724 @@
+阶段5_回写、交付与复盘占位
+
+文案生成与拍摄转化建议系统｜阶段拆分子文件
+
+回写、交付、状态与复盘占位
+
+M07｜状态与回流记录
+
+模块目标：保证第四阶段不是一次性写稿。
+
+应包含的信息：script_status、script_version、used_at 占位、publish_status 占位、stage3_sync_payload 摘要、performance_stub 摘要。
+
+写作规则：已使用选题移出第三阶段当前规划池，但不得删除历史记录。
+
+M08｜质检与修订摘要
+
+模块目标：给运营与系统清楚的可追溯闭环。
+
+应包含的信息：当前 QC 结果、must_fix、should_fix、低置信度段落、是否允许直接拍摄。
+
+写作规则：用户前台可轻展示，系统后端应完整保留。
+
+M09｜下游 handoff 包
+
+模块目标：确保结果可进入拍摄、发布与复盘流程。
+
+应包含的信息：机读字段说明、当前可交付档位、发布建议、后续应更新的状态字段。
+
+写作规则：handoff 对象必须与字段结构表完全一致。
+
+R04｜第三阶段同步更新
+
+模块目标：必要时把反馈回写到第三阶段。
+
+应包含的信息：user_feedback_summary、是否需要屏蔽同类选题、是否要补新题。
+
+九、机读输出建议（供系统调用）
+
+第四阶段建议同时产出 human-readable 与 machine-readable 两套结果。下方 JSON 结构仅为建议格式，实际实现可微调，但核心对象与关键字段命名必须保持一致。
+
+{  "script_request_context": {...},  "script_memory_profile": {...},  "script_draft_bundle": {    "topic_id": "",    "script_id": "",    "script_status": "draft_v1",    "script_version": 1,    "route_lock": "ToB | ToC",    "hook": "",    "opening": "",    "middle": "",    "closing": "",    "cta": "",    "why_this_script": "",    "why_this_structure": "",    "why_now": ""  },  "shooting_advice_bundle": {...},  "stage3_sync_payload": {...},  "performance_stub": {...}}
+
+十一、与第三阶段、第五阶段的衔接说明
+
+衔接对象
+
+第四阶段要做什么
+
+关键字段
+
+第三阶段题池
+
+当文案确认使用后，回写该题已被调用/已被使用，并在需要时触发补货。
+
+topic_id / stage3_sync_payload / used_at / publish_status
+
+拍摄与交付
+
+把可拍稿件与拍摄建议一起交付，不要让执行端重新猜。
+
+script_draft_bundle / shooting_advice_bundle
+
+第五阶段复盘
+
+预留发布与表现占位，便于后续记录数据和用户主观反馈。
+
+performance_stub / script_version / user_feedback_summary
+
+
+
+十二、替换使用说明
+
+本模板可直接作为《第四阶段文案输出模板》的正式基线使用，并建议与《第四阶段工作流节点设计与接口字段说明》《第四阶段知识字段结构表》《第四阶段评分与质检标准》《第四阶段生成智能体提示词文档》《第四阶段质检智能体提示词文档》《第四阶段总控提示词文档》同步上线。
+
+若后续扩展字段，优先在《第四阶段知识字段结构表》中新增并同步回本模板，不建议在其他文件中私自新建平行命名。
+
+如果前台展示需要轻量化，可对用户只展示骨架版或完整稿版，但后端仍建议保留完整机读对象和状态字段。
+
+十三、快速执行清单
+
+先确认当前是已选题、想法梳理、修改重写还是批量出稿模式。
+
+先锁定 route_lock 和用户当前要求，再读取长期偏好与前三阶段结果。
+
+先交付结构化文案，再交付拍摄建议，再写状态与回流字段。
+
+修改时优先局部改，只有必要时才升级为整稿重写。
+
+已使用题只从第三阶段当前规划池移出，不删除历史记录。
+
+每份正式文案输出都要以正式模块收尾，不保留草稿说明或“下一份文件建议”。
+
+I 模块｜生命周期与发布字段
+
+本模块统一第四阶段状态字典，不允许跨文件再生造状态。
+
+字段ID
+
+字段名
+
+说明 / 用途
+
+类型
+
+是否必填
+
+枚举 / 示例
+
+I01
+
+script_status
+
+脚本当前状态
+
+enum
+
+是
+
+idea_raw / topic_confirmed / draft_v1 / revised / approved / used / archived / performance_pending
+
+I02
+
+script_version
+
+脚本版本号
+
+string
+
+是
+
+v1 / v2 / v3
+
+I03
+
+approved_flag
+
+是否已确认可拍
+
+bool
+
+是
+
+true / false
+
+I04
+
+used_at
+
+已使用时间
+
+datetime
+
+条件必填
+
+2026-04-10 10:00
+
+I05
+
+publish_status
+
+发布状态
+
+enum
+
+是
+
+not_published / scheduled / published
+
+I06
+
+publish_platform
+
+发布平台
+
+enum
+
+可选
+
+视频号 / 抖音
+
+I07
+
+publish_date_placeholder
+
+发布时间占位
+
+date
+
+建议
+
+待填
+
+
+
+J 模块｜第三阶段回传字段（stage3_sync_payload）
+
+本模块确保第四阶段不会独立于第三阶段之外运行，所有已使用题与新增题都必须回写。
+
+字段ID
+
+字段名
+
+说明 / 用途
+
+类型
+
+是否必填
+
+枚举 / 示例
+
+J01
+
+topic_id
+
+对应题目ID
+
+string
+
+是
+
+topic_s3_032
+
+J02
+
+script_id
+
+对应脚本ID
+
+string
+
+是
+
+script_2026_001
+
+J03
+
+script_status
+
+脚本状态同步值
+
+enum
+
+是
+
+used / approved / revised
+
+J04
+
+used_at
+
+题目被使用时间
+
+datetime
+
+条件必填
+
+2026-04-10 10:00
+
+J05
+
+topic_pool_action
+
+对第三阶段题池动作
+
+enum
+
+是
+
+remove_from_active_pool / add_to_candidate_pool / update_feedback
+
+J06
+
+topic_writeback_note
+
+回写说明
+
+text
+
+可选
+
+用户想法新梳理成题，已回写候选池
+
+J07
+
+user_feedback_summary
+
+反馈同步摘要
+
+text
+
+建议
+
+这类题更适合案例型
+
+
+
+K 模块｜复盘占位字段（performance_stub）
+
+本模块为第五阶段留接口，不要求第四阶段当场有真实数据，但必须预留。
+
+字段ID
+
+字段名
+
+说明 / 用途
+
+类型
+
+是否必填
+
+枚举 / 示例
+
+K01
+
+performance_stub_id
+
+复盘占位对象ID
+
+string
+
+是
+
+perf_stub_001
+
+K02
+
+script_id
+
+关联脚本ID
+
+string
+
+是
+
+script_2026_001
+
+K03
+
+topic_id
+
+关联题目ID
+
+string
+
+是
+
+topic_s3_032
+
+K04
+
+performance_status
+
+当前复盘状态
+
+enum
+
+是
+
+pending / collecting / ready_for_review
+
+K05
+
+performance_metrics_placeholder
+
+表现字段占位
+
+json/text
+
+建议
+
+播放 / 完播 / 点赞 / 咨询
+
+K06
+
+subjective_feedback_note
+
+主观反馈摘要
+
+text
+
+建议
+
+用户感觉表达顺，但钩子还能更猛
+
+
+
+八、替换使用说明
+
+本表可直接作为第四阶段字段层正式基线使用，并建议与《第四阶段工作流节点设计与接口字段说明》《第四阶段文案输出模板》《第四阶段评分与质检标准》《第四阶段生成智能体提示词文档》《第四阶段质检智能体提示词文档》《第四阶段总控提示词文档》同步上线。
+
+若后续扩展字段，优先在本表新增并维护状态字典，不建议在其他文件中私自新增平行命名。
+
+如需与第三阶段重新对齐字段，应优先在 topic_id / stage3_sync_payload / performance_stub 三个对象上保持强一致。
+
+九、快速执行清单
+
+先锁定命名：topic_id、script_id、script_status、used_at、script_version、publish_status。
+
+先锁定对象：script_request_context、script_memory_profile、script_draft_bundle、script_revision_patch、shooting_advice_bundle、script_qc_report、stage3_sync_payload、performance_stub。
+
+先锁定状态字典，再写工作流和 Prompt。
+
+先保证可追溯和可回流，再扩充包装层。
+
+十四、REST / Workflow 接口建议
+
+接口 / 节点
+
+输入对象
+
+输出对象
+
+说明
+
+/script/generate
+
+script_request_context, script_memory_profile
+
+script_draft_bundle, shooting_advice_bundle
+
+首次生成或已选题直接生成
+
+/script/revise
+
+script_revision_patch, script_id
+
+script_draft_bundle, script_version
+
+局部修改或整稿重写
+
+/script/qc
+
+script_draft_bundle, shooting_advice_bundle
+
+script_qc_report
+
+结果质检
+
+/script/sync-stage3
+
+stage3_sync_payload
+
+sync_result
+
+回写第三阶段题池状态
+
+/script/update-performance
+
+performance_stub
+
+performance_result
+
+为第五阶段复盘占位或回填
+
+
+
+十六、MVP 落地顺序与技术接入说明
+
+MVP 第一优先级：打通 selected_topic → generate → qc → stage3_sync_payload 主链路。
+
+MVP 第二优先级：补全 revision_loop 与局部修改能力。
+
+MVP 第三优先级：补全 batch_generation 的失败隔离与结果汇总。
+
+MVP 第四优先级：补全 performance_stub 回填与第五阶段复盘接口。
+
+技术接入时，优先以统一对象传递替代散乱字段，避免重复解析与命名漂移。
+
+十七、替换使用说明与快速执行清单
+
+G11｜交付打包与状态写入（Delivery Pack & Status Writeback）
+
+节点目标：按交付层级输出最终结果，并写入 approved / used / performance_pending 等状态。
+
+触发条件：G10 通过后触发。
+
+主执行角色：控制层
+
+失败 / 异常条件：命名不一致；未同步第三阶段；缺复盘占位。
+
+回退 / 后续动作：回到上游节点补齐，不直接交付。
+
+R06｜发布占位与归档（Publish Stub & Archive）
+
+节点目标：记录 publish_status / publish_date 占位，进入 performance_pending 或 archived。
+
+11. 接口字段建议（REST / Workflow）
+
+14. 技术接入与替换使用说明
+
+本文件可作为《第四阶段工作流节点设计与接口字段说明》的正式基线版本使用，供技术侧、Prompt 侧和后续文件统一引用。
+
+后续《第四阶段知识字段结构表》《第四阶段文案输出模板》《第四阶段评分与质检标准》《第四阶段生成智能体提示词文档》《第四阶段质检智能体提示词文档》《第四阶段总控提示词文档》均应严格承接本文件中定义的模式、对象、状态与命名规范。
+
+正式版文档不得保留“下一份文件建议”“草稿说明”等非正式残留内容；若后续修订对象或状态字典，应同步更新本文件与所有配套文件。
+
+6.3 第三阶段回传与第五阶段预留
+
+已使用题必须同步第三阶段：从当前规划池移出，但不得删除历史记录。
+
+第四阶段必须为第五阶段复盘保留 performance_stub。
+
+建议在文案确认、使用、发布三个关键节点更新回传对象。
+
+8.4 技术接入提醒
+
+建议在服务端把第四阶段输入对象与第三阶段回传对象解耦存储。
+
+建议对 topic_id / script_id / script_status / used_at 等关键字段做统一枚举和校验。
+
+建议把 why 字段、拍摄建议和 performance_stub 也作为正式可存字段，而不是仅做前端展示。
+
+8.5 替换使用说明
+
+本文件可直接作为《第四阶段生成智能体提示词文档》的正式版使用。
+
+若后续补充子模式、平台特化规则或行业特化规则，应在本文件结构内增补，而不是另起一套命名体系。
+
+附录｜快速执行清单
+
+先判模式，再最小澄清。
+
+先对齐路线，再对齐用户，再对齐结构。
+
+先出稿，再给拍摄建议，再回传上游状态。
+
+先局部改，必要时才整篇重写。
+
+先保证可拍可用，再追求更爆。
+
+补充规则｜流程图显式化
+
+补充规则｜用户继续改稿与下一轮入口
+
+当前流程图要求在阶段5交付后增加“用户是否接受本轮结果并结束”的判断分支。
+
+若用户继续改稿，则回流阶段4；若用户只改标题，则回流阶段3标题修订链路；若用户带新题回来或进入新一轮任务，则回流阶段1重新装配上游输入与模式识别。
+
+补充保留内容
+
+六、MVP 最小必填字段集合
+
+如果先做 MVP，建议至少保证以下字段先可用：A02 request_mode、A03 request_purpose、A05 platform_target、A06 length_bucket、B04 project_route、C01 route_lock、D01 topic_id 或 D04 idea_raw_text、E02 script_goal、E03 structure_type、F01 script_id、F03 hook_text、F08 full_script_text、G01 expression_advice、G02 camera_advice、I01 script_status、I04 used_at、J01 topic_id、J02 script_id、J05 topic_pool_action、K04 performance_status、L01 qc_result。
+
+MVP 阶段也必须保持统一命名，宁可字段少，也不要同义不同名。
+
+MVP 阶段允许把 why_this_script / why_this_structure / why_now 写得简短，但不建议完全删掉。
+
+七、统一状态字典与枚举提醒
+
+枚举对象
+
+推荐值
+
+说明
+
+script_status
+
+idea_raw / topic_confirmed / draft_v1 / revised / approved / used / archived / performance_pending
+
+第四阶段脚本统一生命周期
+
+request_mode
+
+selected_topic / idea_to_topic / revision / batch
+
+四种运行模式
+
+delivery_tier
+
+basic / standard / premium
+
+交付层级
+
+shootability_type
+
+真人口播 / 访谈式 / 清单型 / 数字人
+
+更适合的拍法
+
+qc_result
+
+pass / revise / reject / partial_pass
+
+质检结果
+
+
+
+G11 第三阶段与第五阶段同步
+
+生成 stage3_sync_payload 与 performance_stub。
+
+控制说明：已选题仅在 used 或 approved 后进入同步更新。
+
+十二、与第三阶段的衔接规则
+
+如果第四阶段接收的是第三阶段已选定 topic，则使用原 topic_id，不得新建平行 topic。
+
+如果第四阶段将用户的模糊想法梳理成新选题，则必须同步生成标准 topic_id，并通过 stage3_sync_payload 回写至第三阶段题池或候选池，不得形成影子题池。
+
+回传字段统一为：topic_id、script_id、script_status、used_at、script_version、user_feedback_summary、publish_status、performance_stub。
+
+第三阶段接收 used / approved 等状态后，只将该题从“当前规划池”移出，不得删除历史记录。
+
+十三、与第五阶段复盘的衔接规则
+
+第四阶段不负责最终复盘，但必须预留复盘占位。
+
+performance_stub 至少应包含：script_id、topic_id、publish_status、publish_date、platform、performance_status、notes。
+
+当用户提供发布结果、评论区反馈、转化表现等信息时，允许后续阶段回填，不在第四阶段强制完成。
+
+R05｜状态、版本与第三阶段回写（Status & Sync Update）
+
+节点目标：更新 script_version、script_status、used_at、user_feedback_summary，并构造 stage3_sync_payload。
+
+主执行角色：控制层
+
+10. 文案生命周期与池管理规则
+
+状态
+
+含义
+
+进入条件 / 退出条件
+
+idea_raw
+
+只有想法或观点，还未形成正式 topic。
+
+用户输入模糊想法时进入；经梳理并完成题目确认后退出。
+
+topic_confirmed
+
+题目已确认，可进入首版生成。
+
+完成 G05 后进入；完成 G06 后保持。
+
+draft_v1
+
+首版文案已生成，待质检。
+
+完成 G07 后进入；G09/G10 通过前不得升为 approved。
+
+revised
+
+修改稿已生成，待复检。
+
+完成 R03 后进入；R04 通过后可升为 approved。
+
+approved
+
+已通过质检，可拍摄或交付。
+
+G10 或 R04 通过后进入。
+
+used
+
+已拍 / 已发布，需回写第三阶段并进入复盘占位。
+
+用户标记已用或系统接收发布事件后进入。
+
+archived
+
+本条归档，不再作为当前有效稿继续迭代。
+
+长期结束使用或替换后进入。
+
+performance_pending
+
+已发布，等待表现回填。
+
+发布后进入；第五阶段回填完成后可转 archived。
+
+
+
+说明：第四阶段本身不维护第三阶段“当前规划池”的删题逻辑，但必须通过 stage3_sync_payload 通知第三阶段将已使用选题从当前规划池中移出，同时保留历史记录。
+
+11.1 入口请求建议
+
+`request_id`
+
+`user_id`
+
+`mode`
+
+`input_submode`
+
+`topic_id（如有）`
+
+`idea_text（如有）`
+
+`purpose`
+
+`duration_target`
+
+`platform_target`
+
+`delivery_tier`
+
+`override_requirements`
+
+11.2 结果对象建议
+
+`script_draft_bundle`：正文、结构摘要、轻解释、版本、状态、来源说明。
+
+`shooting_advice_bundle`：拍摄 / 表达 / 场地 / 布光 / 道具 / 下一条选题建议。
+
+`script_qc_report`：质检分数、must_fix、should_fix、delivery_gate、qc_flags。
+
+`stage3_sync_payload`：topic_id、script_id、script_status、used_at、script_version、user_feedback_summary、publish_status、performance_stub。
+
+`performance_stub`：后续发布与复盘占位字段。
+
+13. MVP 落地顺序建议
+
+先实现 selected_topic_input + fresh_generation + revision_loop 三条主链路，优先打通“选题 → 文案 → 修改 → 回传”。
+
+第二步补全 batch_generation 模式与批量失败隔离。
+
+第三步补全 performance_stub 更新入口、发布状态更新接口与第五阶段复盘衔接。
+
+第四步再做更复杂的模板库 / 用户拆解库增强、自动推荐更高阶服务挂钩逻辑。
+
